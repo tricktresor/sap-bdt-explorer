@@ -30,47 +30,51 @@ CLASS lcl_app DEFINITION FINAL.
     CLASS-DATA go_docking TYPE REF TO cl_gui_docking_container.
     CLASS-DATA go_tree TYPE REF TO zcl_bdt_explorer_tree.
     CLASS-DATA gv_loaded_for TYPE string.
+    CLASS-DATA gv_reload TYPE abap_bool.
 
-    CLASS-METHODS load
-      IMPORTING iv_force TYPE abap_bool.
+    CLASS-METHODS get_selection
+      RETURNING VALUE(rv_selection) TYPE string.
 ENDCLASS.
 
 CLASS lcl_app IMPLEMENTATION.
 
-  METHOD pbo.
-    IF go_docking IS INITIAL.
-      go_docking = NEW #( repid = sy-repid
-                          dynnr = sy-dynnr
-                          side  = cl_gui_docking_container=>dock_at_bottom
-                          ratio = 80 ).
-      go_tree = NEW #( go_docking ).
-      load( abap_true ).
-    ENDIF.
-  ENDMETHOD.
-
   METHOD pai.
-    " F8 always reloads; Enter (and any other PAI) reloads when the selection changed,
-    " so control events of the tree do not reset it
-    load( xsdbool( iv_ucomm = 'ONLI' ) ).
+    " F8 always reloads; Enter (and any other PAI) when the selection changed,
+    " so control events of the tree do not reset it. Nothing is read before the first Enter/F8.
+    DATA(lv_selection) = get_selection( ).
+    IF iv_ucomm = 'ONLI' OR lv_selection <> gv_loaded_for.
+      gv_loaded_for = lv_selection.
+      gv_reload = abap_true.
+    ENDIF.
   ENDMETHOD.
 
-  METHOD load.
-    IF go_tree IS NOT BOUND.
+  METHOD pbo.
+    IF gv_reload = abap_false.
       RETURN.
     ENDIF.
+    gv_reload = abap_false.
 
-    DATA(lv_selection) = |{ p_objap }/{ p_langu }|.
-    LOOP AT s_appli INTO DATA(ls_appli).
-      lv_selection = |{ lv_selection }/{ ls_appli-sign }{ ls_appli-option }{ ls_appli-low }{ ls_appli-high }|.
-    ENDLOOP.
-    IF iv_force = abap_false AND lv_selection = gv_loaded_for.
-      RETURN.
+    " A displayed SALV tree is not rebuilt reliably: create container and tree anew
+    IF go_docking IS BOUND.
+      go_docking->free( ).
+      CLEAR: go_docking, go_tree.
     ENDIF.
-    gv_loaded_for = lv_selection.
 
+    go_docking = NEW #( repid = sy-repid
+                        dynnr = sy-dynnr
+                        side  = cl_gui_docking_container=>dock_at_bottom
+                        ratio = 80 ).
+    go_tree = NEW #( go_docking ).
     go_tree->display( NEW zcl_bdt_explorer_model( iv_objap = p_objap
                                                   iv_langu = p_langu
                                                   it_appli = s_appli[] ) ).
+  ENDMETHOD.
+
+  METHOD get_selection.
+    rv_selection = |{ p_objap }/{ p_langu }|.
+    LOOP AT s_appli INTO DATA(ls_appli).
+      rv_selection = |{ rv_selection }/{ ls_appli-sign }{ ls_appli-option }{ ls_appli-low }{ ls_appli-high }|.
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

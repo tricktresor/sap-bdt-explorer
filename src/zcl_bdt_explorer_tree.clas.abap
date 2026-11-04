@@ -26,7 +26,6 @@ CLASS zcl_bdt_explorer_tree DEFINITION
       BEGIN OF c_function,
         search    TYPE salv_de_function VALUE 'ZSEARCH',
         transport TYPE salv_de_function VALUE 'ZTRANSP',
-        refresh   TYPE salv_de_function VALUE 'ZREFRESH',
         expand    TYPE salv_de_function VALUE 'ZEXPAND',
       END OF c_function.
 
@@ -174,11 +173,6 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
                                     icon     = CONV #( icon_import_transport_request )
                                     text     = 'Transport'
                                     tooltip  = 'Write selected entries into a customizing request'
-                                    position = if_salv_c_function_position=>right_of_salv_functions ).
-        lo_functions->add_function( name     = c_function-refresh
-                                    icon     = CONV #( icon_refresh )
-                                    text     = ''
-                                    tooltip  = 'Reload'
                                     position = if_salv_c_function_position=>right_of_salv_functions ).
       CATCH cx_salv_existing cx_salv_wrong_call INTO DATA(lx_salv).
         MESSAGE lx_salv TYPE 'S' DISPLAY LIKE 'E'.
@@ -343,8 +337,6 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
         search( ).
       WHEN c_function-transport.
         transport( ).
-      WHEN c_function-refresh.
-        display( mo_model ).
       WHEN c_function-expand.
         expand_all( ).
     ENDCASE.
