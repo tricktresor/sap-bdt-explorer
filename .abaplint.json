@@ -1,0 +1,76 @@
+{
+  "global": {
+    "files": "/src/**/*.*",
+    "exclude": [],
+    "noIssues": [],
+    "skipGeneratedGatewayClasses": true,
+    "skipGeneratedPersistentClasses": true,
+    "skipGeneratedFunctionGroups": true,
+    "useApackDependencies": false,
+    "skipIncludesWithoutMain": false
+  },
+  "dependencies": [
+    {
+      "url": "https://github.com/abaplint/deps",
+      "folder": "/deps",
+      "files": "/src/**/*.*"
+    }
+  ],
+  "syntax": {
+    "version": "v740sp08",
+    "errorNamespace": "^(Z|Y|LCL_|TY_|LIF_)",
+    "globalConstants": [],
+    "globalMacros": []
+  },
+  "rules": {
+    "begin_end_names": true,
+    "check_ddic": true,
+    "check_include": true,
+    "check_syntax": true,
+    "check_transformation_exists": true,
+    "cyclic_oo": true,
+    "global_class": true,
+    "implement_methods": true,
+    "method_implemented_twice": true,
+    "parser_error": true,
+    "parser_missing_space": true,
+    "superclass_final": true,
+    "unknown_types": true,
+    "xml_consistency": true,
+
+    "colon_missing_space": true,
+    "contains_tab": true,
+    "double_space": true,
+    "empty_statement": true,
+    "exporting": true,
+    "functional_writing": true,
+    "identical_form_names": true,
+    "keyword_case": {
+      "style": "upper",
+      "ignoreExceptions": true,
+      "ignoreLowerClassImplmentationStatmentAndEndclass": true,
+      "ignoreGlobalClassDefinition": false,
+      "ignoreGlobalInterface": false,
+      "ignoreFunctionModuleName": false,
+      "ignoreGlobalClassBoundaries": false,
+      "ignoreKeywords": []
+    },
+    "line_length": {
+      "length": 130
+    },
+    "max_one_statement": true,
+    "obsolete_statement": true,
+    "omit_receiving": true,
+    "prefer_xsdbool": true,
+    "preferred_compare_operator": true,
+    "sequential_blank": {
+      "lines": 4
+    },
+    "space_before_colon": true,
+    "start_at_tab": true,
+    "unused_types": true,
+    "unused_variables": true,
+    "use_new": true,
+    "whitespace_end": true
+  }
+}

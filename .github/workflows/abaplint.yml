@@ -1,0 +1,22 @@
+name: abaplint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  abaplint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install abaplint
+        run: npm install -g @abaplint/cli@2
+      - name: Run abaplint
+        run: abaplint .abaplint.json

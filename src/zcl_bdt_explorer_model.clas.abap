@@ -802,13 +802,20 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
     DATA(lv_offset) = lv_index MOD c_status_length.
 
     CASE lv_index DIV c_status_length.
-      WHEN 0. rv_status = is_tbz0o-feldstlst1+lv_offset(1).
-      WHEN 1. rv_status = is_tbz0o-feldstlst2+lv_offset(1).
-      WHEN 2. rv_status = is_tbz0o-feldstlst3+lv_offset(1).
-      WHEN 3. rv_status = is_tbz0o-feldstlst4+lv_offset(1).
-      WHEN 4. rv_status = is_tbz0o-feldstlst5+lv_offset(1).
-      WHEN 5. rv_status = is_tbz0o-feldstlst6+lv_offset(1).
-      WHEN 6. rv_status = is_tbz0o-feldstlst7+lv_offset(1).
+      WHEN 0.
+        rv_status = is_tbz0o-feldstlst1+lv_offset(1).
+      WHEN 1.
+        rv_status = is_tbz0o-feldstlst2+lv_offset(1).
+      WHEN 2.
+        rv_status = is_tbz0o-feldstlst3+lv_offset(1).
+      WHEN 3.
+        rv_status = is_tbz0o-feldstlst4+lv_offset(1).
+      WHEN 4.
+        rv_status = is_tbz0o-feldstlst5+lv_offset(1).
+      WHEN 5.
+        rv_status = is_tbz0o-feldstlst6+lv_offset(1).
+      WHEN 6.
+        rv_status = is_tbz0o-feldstlst7+lv_offset(1).
     ENDCASE.
   ENDMETHOD.
 

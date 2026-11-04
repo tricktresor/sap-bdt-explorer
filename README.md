@@ -1,4 +1,6 @@
 # sap-bdt-Explorer
+[![abaplint](https://github.com/tricktresor/sap-bdt-explorer/actions/workflows/abaplint.yml/badge.svg)](https://github.com/tricktresor/sap-bdt-explorer/actions/workflows/abaplint.yml)
+
 SAP Business Data Toolset Explorer
 
 Report `ZBDT_EXPLORER` zeigt das BDT-Customizing eines Applikationsobjekts (z. B. `BUPA`) als ALV-Baum direkt auf dem Selektionsbild und kann ausgewählte Einträge samt abhängiger Einträge in einen Customizing-Auftrag schreiben.
@@ -31,6 +33,10 @@ Mit [abapGit](https://abapgit.org) in ein Paket (z. B. `$BDT_EXPLORER` oder `ZBD
 | `ZCL_BDT_EXPLORER_MODEL` | Lesen der TBZ*-Tabellen, Hierarchie und Verwendungsnachweis |
 | `ZCL_BDT_EXPLORER_TRANSPORT` | Sammeln der Einträge, Schlüsselaufbau (E071K), Auftrag |
 | `ZCL_BDT_EXPLORER_TREE` | SALV-Baum, Toolbar, Ereignisse |
+
+## Statische Prüfung
+
+Jeder Push auf `main` und jeder Pull Request wird per GitHub Action mit [abaplint](https://abaplint.org) geprüft (Konfiguration: `.abaplint.json`, Syntaxstand 7.40 SP08). SAP-Standardobjekte wie die TBZ*-Tabellen sind dort nicht bekannt und werden als „void“ behandelt; geprüft wird der Code im Namensraum `Z`/`Y`.
 
 ## Status
 
