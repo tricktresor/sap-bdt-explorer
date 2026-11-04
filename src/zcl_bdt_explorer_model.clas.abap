@@ -55,6 +55,11 @@ CLASS zcl_bdt_explorer_model DEFINITION
       IMPORTING is_node           TYPE ty_node
       RETURNING VALUE(rv_foreign) TYPE abap_bool.
 
+    "! Node label: like GET_TYPE_TEXT, object parts named as the application object calls them
+    METHODS get_label
+      IMPORTING is_node        TYPE ty_node
+      RETURNING VALUE(rv_text) TYPE string.
+
     CLASS-METHODS get_type_text
       IMPORTING iv_type        TYPE zif_bdt_explorer_types=>ty_node_type
       RETURNING VALUE(rv_text) TYPE string.
@@ -102,7 +107,12 @@ CLASS zcl_bdt_explorer_model DEFINITION
     DATA mt_rel_absnr TYPE HASHED TABLE OF bu_absnr WITH UNIQUE KEY table_line.
     DATA mt_rel_setid TYPE HASHED TABLE OF bu_setid WITH UNIQUE KEY table_line.
 
+    " Name of an object part as the application object calls it (BUPA: BP View / BP Views)
+    DATA mv_part_singular TYPE string VALUE `Object part`.
+    DATA mv_part_plural TYPE string VALUE `Object parts`.
+
     METHODS determine_relevance.
+    METHODS determine_part_names.
 
     "! Expander only for nodes that really have children (one select per node type)
     METHODS mark_expandable
@@ -155,7 +165,25 @@ CLASS zcl_bdt_explorer_model DEFINITION
     METHODS data_sets
       IMPORTING is_node         TYPE ty_node
       RETURNING VALUE(rt_nodes) TYPE tt_node.
-    METHODS data_set_content
+    METHODS object_parts
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS object_part_folders
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS object_part_data_sets
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS object_part_applications
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS object_part_sequences
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS object_part_views
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS object_part_subheaders
       IMPORTING is_node         TYPE ty_node
       RETURNING VALUE(rt_nodes) TYPE tt_node.
     METHODS activities
@@ -198,6 +226,51 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
     IF mt_appli IS NOT INITIAL.
       determine_relevance( ).
     ENDIF.
+    determine_part_names( ).
+  ENDMETHOD.
+
+
+  METHOD determine_part_names.
+    " Singular: label of the reference field TBZ1-RLTTB/RLTFL, plural: TBZ1T-RLTPL
+    SELECT SINGLE rlttb, rltfl FROM tbz1 INTO @DATA(ls_reference)
+      WHERE objap = @mv_objap.
+    IF sy-subrc = 0 AND ls_reference-rlttb IS NOT INITIAL.
+      SELECT SINGLE rollname FROM dd03l INTO @DATA(lv_rollname)
+        WHERE tabname   = @ls_reference-rlttb
+          AND fieldname = @ls_reference-rltfl
+          AND as4local  = 'A'.
+      SELECT SINGLE scrtext_m FROM dd04t INTO @DATA(lv_singular)
+        WHERE rollname   = @lv_rollname
+          AND ddlanguage = @mv_langu
+          AND as4local   = 'A'.
+      IF lv_singular IS INITIAL.
+        SELECT SINGLE scrtext_m FROM dd04t INTO @lv_singular
+          WHERE rollname   = @lv_rollname
+            AND ddlanguage = 'E'
+            AND as4local   = 'A'.
+      ENDIF.
+      IF lv_singular IS NOT INITIAL.
+        mv_part_singular = lv_singular.
+      ENDIF.
+    ENDIF.
+
+    SELECT SINGLE rltpl FROM tbz1t INTO @DATA(lv_plural)
+      WHERE spras = @mv_langu
+        AND objap = @mv_objap.
+    IF lv_plural IS INITIAL.
+      SELECT SINGLE rltpl FROM tbz1t INTO @lv_plural
+        WHERE spras = 'E'
+          AND objap = @mv_objap.
+    ENDIF.
+    IF lv_plural IS NOT INITIAL.
+      mv_part_plural = lv_plural.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD get_label.
+    rv_text = COND #( WHEN is_node-type = zif_bdt_explorer_types=>c_type-object_part THEN mv_part_singular
+                      ELSE get_type_text( is_node-type ) ).
   ENDMETHOD.
 
 
@@ -243,6 +316,9 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         rv_foreign = xsdbool( NOT line_exists( mt_rel_absnr[ table_line = is_node-absnr ] ) ).
       WHEN zif_bdt_explorer_types=>c_type-view.
         rv_foreign = xsdbool( is_node-appli NOT IN mt_appli ).
+      WHEN zif_bdt_explorer_types=>c_type-sequence.
+        " Screen sequence (category) of an object part: not specific to the application
+        rv_foreign = xsdbool( is_node-folder = zif_bdt_explorer_types=>c_folder-op_sequences ).
     ENDCASE.
   ENDMETHOD.
 
@@ -297,7 +373,21 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
             rt_nodes = data_sets( is_node ).
           WHEN zif_bdt_explorer_types=>c_folder-activities.
             rt_nodes = activities( is_node ).
+          WHEN zif_bdt_explorer_types=>c_folder-object_parts.
+            rt_nodes = object_parts( is_node ).
+          WHEN zif_bdt_explorer_types=>c_folder-op_data_sets.
+            rt_nodes = object_part_data_sets( is_node ).
+          WHEN zif_bdt_explorer_types=>c_folder-op_appls.
+            rt_nodes = object_part_applications( is_node ).
+          WHEN zif_bdt_explorer_types=>c_folder-op_sequences.
+            rt_nodes = object_part_sequences( is_node ).
+          WHEN zif_bdt_explorer_types=>c_folder-op_views.
+            rt_nodes = object_part_views( is_node ).
+          WHEN zif_bdt_explorer_types=>c_folder-op_subheader.
+            rt_nodes = object_part_subheaders( is_node ).
         ENDCASE.
+      WHEN zif_bdt_explorer_types=>c_type-object_part.
+        rt_nodes = object_part_folders( is_node ).
       WHEN zif_bdt_explorer_types=>c_type-application.
         rt_nodes = application_content( is_node ).
       WHEN zif_bdt_explorer_types=>c_type-sequence.
@@ -312,8 +402,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         rt_nodes = field_group_content( is_node ).
       WHEN zif_bdt_explorer_types=>c_type-event.
         rt_nodes = event_function_modules( is_node ).
-      WHEN zif_bdt_explorer_types=>c_type-data_set.
-        rt_nodes = data_set_content( is_node ).
     ENDCASE.
     mark_expandable( CHANGING ct_nodes = rt_nodes ).
   ENDMETHOD.
@@ -529,7 +617,8 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         OR zif_bdt_explorer_types=>c_type-field_status
         OR zif_bdt_explorer_types=>c_type-event_fm
         OR zif_bdt_explorer_types=>c_type-table
-        OR zif_bdt_explorer_types=>c_type-object_part
+        OR zif_bdt_explorer_types=>c_type-data_set
+        OR zif_bdt_explorer_types=>c_type-subheader
         OR zif_bdt_explorer_types=>c_type-activity.
         rs_node-expandable = abap_false.
       WHEN OTHERS.
@@ -545,6 +634,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ( |{ zif_bdt_explorer_types=>c_folder-events }Events| )
       ( |{ zif_bdt_explorer_types=>c_folder-tables }Tables| )
       ( |{ zif_bdt_explorer_types=>c_folder-data_sets }Data sets| )
+      ( |{ zif_bdt_explorer_types=>c_folder-object_parts }{ mv_part_plural }| )
       ( |{ zif_bdt_explorer_types=>c_folder-activities }Activities (field modification)| ) ).
 
     LOOP AT lt_folders INTO DATA(lv_folder).
@@ -598,21 +688,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         AND e~appli = @is_node-appli
       ORDER BY e~sicht.
     rt_nodes = views_to_nodes( is_from = is_node it_views = lt_views iv_up = abap_false ).
-
-    SELECT c~rltyp, t~bez50
-      FROM tbz0c AS c
-      LEFT OUTER JOIN tbz0t AS t ON t~objap = c~objap AND t~rltyp = c~rltyp AND t~spras = @mv_langu
-      INTO TABLE @DATA(lt_parts)
-      WHERE c~objap = @mv_objap
-        AND c~appli = @is_node-appli
-      ORDER BY c~rltyp.
-    LOOP AT lt_parts INTO DATA(ls_part).
-      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-object_part ).
-      ls_node-rltyp    = ls_part-rltyp.
-      ls_node-key_text = ls_part-rltyp.
-      ls_node-text     = ls_part-bez50.
-      APPEND ls_node TO rt_nodes.
-    ENDLOOP.
   ENDMETHOD.
 
 
@@ -818,19 +893,166 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD data_set_content.
-    SELECT s~rltyp, t~bez50
-      FROM tbz0s AS s
-      LEFT OUTER JOIN tbz0t AS t ON t~objap = s~objap AND t~rltyp = s~rltyp AND t~spras = @mv_langu
+  METHOD object_parts.
+    DATA lt_relevant TYPE HASHED TABLE OF bu_rltyp WITH UNIQUE KEY table_line.
+
+    SELECT p~rltyp, t~bez50
+      FROM tbz0 AS p
+      LEFT OUTER JOIN tbz0t AS t ON t~objap = p~objap AND t~rltyp = p~rltyp AND t~spras = @mv_langu
       INTO TABLE @DATA(lt_parts)
-      WHERE s~objap = @mv_objap
-        AND s~setid = @is_node-setid
-      ORDER BY s~rltyp.
+      WHERE p~objap = @mv_objap
+      ORDER BY p~rltyp.
+
+    " With an application filter only object parts calling the application (TBZ0C)
+    IF mt_appli IS NOT INITIAL.
+      SELECT DISTINCT rltyp FROM tbz0c INTO TABLE @lt_relevant
+        WHERE objap = @mv_objap
+          AND appli IN @mt_appli.
+    ENDIF.
+
     LOOP AT lt_parts INTO DATA(ls_part).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( lt_relevant[ table_line = ls_part-rltyp ] ).
+        CONTINUE.
+      ENDIF.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-object_part ).
       ls_node-rltyp    = ls_part-rltyp.
       ls_node-key_text = ls_part-rltyp.
       ls_node-text     = ls_part-bez50.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD object_part_folders.
+    " Same structure as view cluster BUPA_TBZ0
+    DATA(lt_folders) = VALUE string_table(
+      ( |{ zif_bdt_explorer_types=>c_folder-op_data_sets }Data Sets| )
+      ( |{ zif_bdt_explorer_types=>c_folder-op_appls }Calling Applications| )
+      ( |{ zif_bdt_explorer_types=>c_folder-op_sequences }Screen Sequences| )
+      ( |{ zif_bdt_explorer_types=>c_folder-op_views }Views| )
+      ( |{ zif_bdt_explorer_types=>c_folder-op_subheader }Subheader ID| ) ).
+
+    LOOP AT lt_folders INTO DATA(lv_folder).
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-folder ).
+      ls_node-folder   = lv_folder(4).
+      ls_node-key_text = substring( val = lv_folder off = 4 ).
+      IF get_children( ls_node ) IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD object_part_data_sets.
+    SELECT s~setid, t~title
+      FROM tbz0s AS s
+      LEFT OUTER JOIN tbz0r AS t ON t~objap = s~objap AND t~setid = s~setid AND t~spras = @mv_langu
+      INTO TABLE @DATA(lt_sets)
+      WHERE s~objap = @mv_objap
+        AND s~rltyp = @is_node-rltyp
+      ORDER BY s~setid.
+
+    LOOP AT lt_sets INTO DATA(ls_set).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_setid[ table_line = ls_set-setid ] ).
+        CONTINUE.
+      ENDIF.
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-data_set ).
+      ls_node-folder   = zif_bdt_explorer_types=>c_folder-op_data_sets.
+      ls_node-setid    = ls_set-setid.
+      ls_node-key_text = ls_set-setid.
+      ls_node-text     = ls_set-title.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD object_part_applications.
+    SELECT c~appli, t~bez30
+      FROM tbz0c AS c
+      LEFT OUTER JOIN tbz0b AS t ON t~objap = c~objap AND t~appli = c~appli AND t~spras = @mv_langu
+      INTO TABLE @DATA(lt_app)
+      WHERE c~objap = @mv_objap
+        AND c~rltyp = @is_node-rltyp
+        AND c~appli IN @mt_appli
+      ORDER BY c~appli.
+
+    LOOP AT lt_app INTO DATA(ls_app).
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-application ).
+      ls_node-folder   = zif_bdt_explorer_types=>c_folder-op_appls.
+      ls_node-appli    = ls_app-appli.
+      ls_node-key_text = ls_app-appli.
+      ls_node-text     = ls_app-bez30.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD object_part_sequences.
+    SELECT u~vartp, u~varnr, t~txt50
+      FROM tbz0u AS u
+      LEFT OUTER JOIN tbz3t AS t ON t~objap = u~objap AND t~varnr = u~varnr AND t~spras = @mv_langu
+      INTO TABLE @DATA(lt_seq)
+      WHERE u~objap = @mv_objap
+        AND u~rltyp = @is_node-rltyp
+      ORDER BY u~vartp.
+
+    LOOP AT lt_seq INTO DATA(ls_seq).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_varnr[ table_line = ls_seq-varnr ] ).
+        CONTINUE.
+      ENDIF.
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-sequence ).
+      ls_node-folder   = zif_bdt_explorer_types=>c_folder-op_sequences.
+      ls_node-vartp    = ls_seq-vartp.
+      ls_node-varnr    = ls_seq-varnr.
+      ls_node-key_text = ls_seq-varnr.
+      ls_node-text     = ls_seq-txt50.
+      ls_node-info     = |Screen sequence category { ls_seq-vartp }|.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD object_part_views.
+    DATA lt_views TYPE tt_view_row.
+
+    SELECT e~sicht, e~prgnm, e~dynnr, e~appli, t~bez50
+      FROM tbz0f AS f
+      INNER JOIN tbz3e AS e ON e~objap = f~objap AND e~sicht = f~sicht
+      LEFT OUTER JOIN tbz3f AS t ON t~objap = e~objap AND t~sicht = e~sicht AND t~spras = @mv_langu
+      INTO CORRESPONDING FIELDS OF TABLE @lt_views
+      WHERE f~objap = @mv_objap
+        AND f~rltyp = @is_node-rltyp
+        AND e~appli IN @mt_appli
+      ORDER BY e~sicht.
+
+    rt_nodes = views_to_nodes( is_from = is_node it_views = lt_views iv_up = abap_false ).
+    LOOP AT rt_nodes ASSIGNING FIELD-SYMBOL(<ls_node>).
+      <ls_node>-folder = zif_bdt_explorer_types=>c_folder-op_views.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD object_part_subheaders.
+    " TBZJ2 has no application object: the object part is the role
+    SELECT j~sub_header_id, h~application, t~text
+      FROM tbzj2 AS j
+      LEFT OUTER JOIN tbzj1 AS h ON h~sub_header_id = j~sub_header_id
+      LEFT OUTER JOIN tbzj1t AS t ON t~sub_header_id = j~sub_header_id AND t~language = @mv_langu
+      INTO TABLE @DATA(lt_shid)
+      WHERE j~role = @is_node-rltyp
+      ORDER BY j~sub_header_id.
+
+    LOOP AT lt_shid INTO DATA(ls_shid).
+      IF mt_appli IS NOT INITIAL AND ls_shid-application NOT IN mt_appli.
+        CONTINUE.
+      ENDIF.
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-subheader ).
+      ls_node-folder   = zif_bdt_explorer_types=>c_folder-op_subheader.
+      ls_node-shid     = ls_shid-sub_header_id.
+      ls_node-key_text = ls_shid-sub_header_id.
+      ls_node-text     = ls_shid-text.
+      ls_node-info     = COND #( WHEN ls_shid-application IS NOT INITIAL THEN |Appl. { ls_shid-application }| ).
       APPEND ls_node TO rt_nodes.
     ENDLOOP.
   ENDMETHOD.
@@ -856,7 +1078,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
   METHOD mark_expandable.
     DATA lt_appli TYPE STANDARD TABLE OF bu_appli WITH EMPTY KEY.
-    DATA lt_setid TYPE STANDARD TABLE OF bu_setid WITH EMPTY KEY.
+    DATA lt_rltyp TYPE STANDARD TABLE OF bu_rltyp WITH EMPTY KEY.
     DATA lt_varnr TYPE STANDARD TABLE OF bu_varnr WITH EMPTY KEY.
     DATA lt_dynid TYPE STANDARD TABLE OF bu_dynid WITH EMPTY KEY.
     DATA lt_dynid_up TYPE STANDARD TABLE OF bu_dynid WITH EMPTY KEY.
@@ -870,24 +1092,35 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
     DATA(lt_app) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-application ) ( n ) ).
     IF lt_app IS NOT INITIAL.
-      " views (TBZ3E) or object parts (TBZ0C) of the application
+      " views of the application (TBZ3E)
       SELECT appli FROM tbz3e INTO TABLE @lt_appli
-        FOR ALL ENTRIES IN @lt_app
-        WHERE objap = @mv_objap
-          AND appli = @lt_app-appli.
-      SELECT appli FROM tbz0c APPENDING TABLE @lt_appli
         FOR ALL ENTRIES IN @lt_app
         WHERE objap = @mv_objap
           AND appli = @lt_app-appli.
     ENDIF.
 
-    DATA(lt_set) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-data_set ) ( n ) ).
-    IF lt_set IS NOT INITIAL.
-      " object parts of the data set (TBZ0S)
-      SELECT setid FROM tbz0s INTO TABLE @lt_setid
-        FOR ALL ENTRIES IN @lt_set
+    DATA(lt_part) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-object_part ) ( n ) ).
+    IF lt_part IS NOT INITIAL.
+      " any assignment of the object part (view cluster BUPA_TBZ0)
+      SELECT rltyp FROM tbz0s INTO TABLE @lt_rltyp
+        FOR ALL ENTRIES IN @lt_part
         WHERE objap = @mv_objap
-          AND setid = @lt_set-setid.
+          AND rltyp = @lt_part-rltyp.
+      SELECT rltyp FROM tbz0c APPENDING TABLE @lt_rltyp
+        FOR ALL ENTRIES IN @lt_part
+        WHERE objap = @mv_objap
+          AND rltyp = @lt_part-rltyp.
+      SELECT rltyp FROM tbz0u APPENDING TABLE @lt_rltyp
+        FOR ALL ENTRIES IN @lt_part
+        WHERE objap = @mv_objap
+          AND rltyp = @lt_part-rltyp.
+      SELECT rltyp FROM tbz0f APPENDING TABLE @lt_rltyp
+        FOR ALL ENTRIES IN @lt_part
+        WHERE objap = @mv_objap
+          AND rltyp = @lt_part-rltyp.
+      SELECT role FROM tbzj2 APPENDING TABLE @lt_rltyp
+        FOR ALL ENTRIES IN @lt_part
+        WHERE role = @lt_part-rltyp.
     ENDIF.
 
     DATA(lt_seq) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-sequence ) ( n ) ).
@@ -958,8 +1191,8 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       CASE <ls_node>-type.
         WHEN zif_bdt_explorer_types=>c_type-application.
           <ls_node>-expandable = xsdbool( line_exists( lt_appli[ table_line = <ls_node>-appli ] ) ).
-        WHEN zif_bdt_explorer_types=>c_type-data_set.
-          <ls_node>-expandable = xsdbool( line_exists( lt_setid[ table_line = <ls_node>-setid ] ) ).
+        WHEN zif_bdt_explorer_types=>c_type-object_part.
+          <ls_node>-expandable = xsdbool( line_exists( lt_rltyp[ table_line = <ls_node>-rltyp ] ) ).
         WHEN zif_bdt_explorer_types=>c_type-sequence.
           <ls_node>-expandable = xsdbool( <ls_node>-up = abap_false
                                       AND line_exists( lt_varnr[ table_line = <ls_node>-varnr ] ) ).
@@ -1047,6 +1280,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-table        THEN `Table`
       WHEN zif_bdt_explorer_types=>c_type-data_set     THEN `Data set`
       WHEN zif_bdt_explorer_types=>c_type-object_part  THEN `Object part`
+      WHEN zif_bdt_explorer_types=>c_type-subheader    THEN `Subheader ID`
       WHEN zif_bdt_explorer_types=>c_type-activity     THEN `Activity`
       WHEN zif_bdt_explorer_types=>c_type-search       THEN `Search`
       ELSE `` ).

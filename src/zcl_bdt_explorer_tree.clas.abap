@@ -94,6 +94,7 @@ CLASS zcl_bdt_explorer_tree DEFINITION
     METHODS call_maintenance
       IMPORTING
         iv_cluster              TYPE vcldir-vclname OPTIONAL
+        iv_start                TYPE vclstruc-object OPTIONAL
         iv_view                 TYPE dd02v-tabname OPTIONAL
         it_sellist              TYPE tt_sellist
       RETURNING
@@ -206,7 +207,7 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
     DATA(lv_text) = SWITCH string( is_node-type
       WHEN zif_bdt_explorer_types=>c_type-folder
         OR zif_bdt_explorer_types=>c_type-search THEN is_node-key_text
-      ELSE |{ zcl_bdt_explorer_model=>get_type_text( is_node-type ) } { is_node-key_text }| ).
+      ELSE |{ mo_model->get_label( is_node ) } { is_node-key_text }| ).
     IF is_node-up = abap_true.
       lv_text = |<- { lv_text }|.
     ENDIF.
@@ -387,6 +388,34 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
 
     DATA(lt_base) = VALUE tt_sellist( ( viewfield = 'OBJAP' operator = 'EQ' value = is_node-objap ) ).
 
+    " Object parts and everything listed below them: view cluster BUPA_TBZ0 at the matching object
+    IF is_node-type = zif_bdt_explorer_types=>c_type-object_part
+       OR is_node-folder = zif_bdt_explorer_types=>c_folder-object_parts
+       OR is_node-folder = zif_bdt_explorer_types=>c_folder-op_data_sets
+       OR is_node-folder = zif_bdt_explorer_types=>c_folder-op_appls
+       OR is_node-folder = zif_bdt_explorer_types=>c_folder-op_sequences
+       OR is_node-folder = zif_bdt_explorer_types=>c_folder-op_views
+       OR is_node-folder = zif_bdt_explorer_types=>c_folder-op_subheader.
+      DATA(lv_start) = SWITCH vclstruc-object( is_node-folder
+        WHEN zif_bdt_explorer_types=>c_folder-op_data_sets THEN 'V_TBZ0S'
+        WHEN zif_bdt_explorer_types=>c_folder-op_appls     THEN 'V_TBZ0C'
+        WHEN zif_bdt_explorer_types=>c_folder-op_sequences THEN 'V_TBZ0U'
+        WHEN zif_bdt_explorer_types=>c_folder-op_views     THEN 'V_TBZ0F'
+        WHEN zif_bdt_explorer_types=>c_folder-op_subheader THEN 'V_TBZJ2' ).
+      IF is_node-rltyp IS NOT INITIAL.
+        lt_keys = VALUE #( ( viewfield = 'RLTYP' operator = 'EQ' value = is_node-rltyp ) ).
+      ENDIF.
+      IF call_maintenance( iv_cluster = 'BUPA_TBZ0'
+                           iv_start   = lv_start
+                           it_sellist = VALUE #( BASE lt_base ( LINES OF lt_keys ) ) ) = abap_true
+         AND lt_keys IS NOT INITIAL.
+        call_maintenance( iv_cluster = 'BUPA_TBZ0'
+                          iv_start   = lv_start
+                          it_sellist = lt_base ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     " Target per node type, as report BUSVIEWS maps the transactions BUS1..BUS23
     DATA(lv_type) = COND zif_bdt_explorer_types=>ty_node_type(
       WHEN is_node-type <> zif_bdt_explorer_types=>c_type-folder THEN is_node-type
@@ -437,9 +466,6 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-data_set.
         lv_view = 'V_TBZ0Q'.
         lt_keys = VALUE #( ( viewfield = 'SETID' operator = 'EQ' value = is_node-setid ) ).
-      WHEN zif_bdt_explorer_types=>c_type-object_part.
-        lv_cluster = 'BUPA_TBZ0'.
-        lt_keys = VALUE #( ( viewfield = 'RLTYP' operator = 'EQ' value = is_node-rltyp ) ).
       WHEN zif_bdt_explorer_types=>c_type-activity
         OR zif_bdt_explorer_types=>c_type-field_status.
         lv_view = 'V_TBZ0O_2'.
@@ -476,6 +502,7 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
       CALL FUNCTION 'VIEWCLUSTER_MAINTENANCE_CALL'
         EXPORTING
           viewcluster_name             = iv_cluster
+          start_object                 = iv_start
           maintenance_action           = 'U'
           no_warning_for_clientindep   = abap_true
         TABLES

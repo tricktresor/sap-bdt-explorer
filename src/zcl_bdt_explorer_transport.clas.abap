@@ -34,7 +34,7 @@ CLASS zcl_bdt_explorer_transport DEFINITION
 
   PRIVATE SECTION.
     CONSTANTS c_tables_of_object TYPE string
-      VALUE `TBZ1 TBZ1T TBZ0A TBZ0B TBZ0 TBZ0T TBZ0C TBZ0S TBZ1F TBZ1H TBZ1C TBZ0Q TBZ0R TBZ0O ` &
+      VALUE `TBZ1 TBZ1T TBZ0A TBZ0B TBZ0 TBZ0T TBZ0C TBZ0S TBZ0U TBZ0F TBZ1F TBZ1H TBZ1C TBZ0Q TBZ0R TBZ0O ` &
             `TBZ3 TBZ3T TBZ3K TBZ3A TBZ3B TBZ3I TBZ3C TBZ3D TBZ3H TBZ3E TBZ3F TBZ3S TBZ3W TBZ3X TBZ3R TBZ4A` ##NO_TEXT.
 
     TYPES ty_value TYPE c LENGTH 40.
@@ -57,6 +57,8 @@ CLASS zcl_bdt_explorer_transport DEFINITION
         action TYPE ty_range,
         setid  TYPE ty_range,
         rltyp  TYPE ty_range,
+        vartp  TYPE ty_range,
+        shid   TYPE ty_range,
       END OF ty_filter.
 
     "! Maintenance dialog a table is recorded with, as SM30/SM34 do (E071K-MASTERTYPE etc.)
@@ -173,6 +175,10 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-application.
         read_keys( iv_tables = `TBZ0A TBZ0B`
                    is_filter = VALUE #( objap = lv_objap appli = eq( is_node-appli ) ) ).
+        IF is_node-folder = zif_bdt_explorer_types=>c_folder-op_appls.
+          read_keys( iv_tables = `TBZ0C`
+                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) appli = eq( is_node-appli ) ) ).
+        ENDIF.
         " Event function modules of the application are not part of the tree below it
         IF iv_cascade = abap_true.
           read_keys( iv_tables = `TBZ1F`
@@ -182,6 +188,10 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-sequence.
         read_keys( iv_tables = `TBZ3 TBZ3T`
                    is_filter = VALUE #( objap = lv_objap varnr = eq( is_node-varnr ) ) ).
+        IF is_node-folder = zif_bdt_explorer_types=>c_folder-op_sequences.
+          read_keys( iv_tables = `TBZ0U`
+                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) vartp = eq( is_node-vartp ) ) ).
+        ENDIF.
         IF is_node-dynid IS NOT INITIAL.
           read_keys( iv_tables = `TBZ3K`
                      is_filter = VALUE #( objap = lv_objap varnr = eq( is_node-varnr ) dynid = eq( is_node-dynid ) ) ).
@@ -214,6 +224,10 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-view.
         read_keys( iv_tables = `TBZ3E TBZ3F TBZ4A`
                    is_filter = VALUE #( objap = lv_objap sicht = eq( is_node-sicht ) ) ).
+        IF is_node-folder = zif_bdt_explorer_types=>c_folder-op_views.
+          read_keys( iv_tables = `TBZ0F`
+                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) sicht = eq( is_node-sicht ) ) ).
+        ENDIF.
         IF is_node-absnr IS NOT INITIAL.
           read_keys( iv_tables = `TBZ3H`
                      is_filter = VALUE #( objap = lv_objap sicht = eq( is_node-sicht ) absnr = eq( is_node-absnr ) ) ).
@@ -261,18 +275,18 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-data_set.
         read_keys( iv_tables = `TBZ0Q TBZ0R`
                    is_filter = VALUE #( objap = lv_objap setid = eq( is_node-setid ) ) ).
+        IF is_node-folder = zif_bdt_explorer_types=>c_folder-op_data_sets.
+          read_keys( iv_tables = `TBZ0S`
+                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) setid = eq( is_node-setid ) ) ).
+        ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-object_part.
         read_keys( iv_tables = `TBZ0 TBZ0T`
                    is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) ) ).
-        IF is_node-appli IS NOT INITIAL.
-          read_keys( iv_tables = `TBZ0C`
-                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) appli = eq( is_node-appli ) ) ).
-        ENDIF.
-        IF is_node-setid IS NOT INITIAL.
-          read_keys( iv_tables = `TBZ0S`
-                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) setid = eq( is_node-setid ) ) ).
-        ENDIF.
+
+      WHEN zif_bdt_explorer_types=>c_type-subheader.
+        read_keys( iv_tables = `TBZJ2`
+                   is_filter = VALUE #( rltyp = eq( is_node-rltyp ) shid = eq( is_node-shid ) ) ).
     ENDCASE.
   ENDMETHOD.
 
@@ -345,6 +359,27 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
               AND rltyp IN @is_filter-rltyp
               AND setid IN @is_filter-setid.
           add_keys( iv_tabname = 'TBZ0S' it_keys = lt_tbz0s ).
+
+        WHEN `TBZ0U`.
+          SELECT client, objap, rltyp, vartp FROM tbz0u INTO TABLE @DATA(lt_tbz0u)
+            WHERE objap = @is_filter-objap
+              AND rltyp IN @is_filter-rltyp
+              AND vartp IN @is_filter-vartp.
+          add_keys( iv_tabname = 'TBZ0U' it_keys = lt_tbz0u ).
+
+        WHEN `TBZ0F`.
+          SELECT client, objap, rltyp, sicht FROM tbz0f INTO TABLE @DATA(lt_tbz0f)
+            WHERE objap = @is_filter-objap
+              AND rltyp IN @is_filter-rltyp
+              AND sicht IN @is_filter-sicht.
+          add_keys( iv_tabname = 'TBZ0F' it_keys = lt_tbz0f ).
+
+        WHEN `TBZJ2`.
+          " No application object in TBZJ2: the object part is the role
+          SELECT client, role, sub_header_id FROM tbzj2 INTO TABLE @DATA(lt_tbzj2)
+            WHERE role          IN @is_filter-rltyp
+              AND sub_header_id IN @is_filter-shid.
+          add_keys( iv_tabname = 'TBZJ2' it_keys = lt_tbzj2 ).
 
         WHEN `TBZ1F`.
           SELECT client, objcn, ztpkt, objap, posnr FROM tbz1f INTO TABLE @DATA(lt_tbz1f)
@@ -519,6 +554,9 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN 'TBZ0' OR 'TBZ0T'   THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0' )
       WHEN 'TBZ0C'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0C' )
       WHEN 'TBZ0S'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0S' )
+      WHEN 'TBZ0U'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0U' )
+      WHEN 'TBZ0F'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0F' )
+      WHEN 'TBZJ2'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZJ2' )
       WHEN 'TBZ1F'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPATBZ1AR' viewname = 'V_TBZ1F' )
       WHEN 'TBZ3' OR 'TBZ3T'   THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3'  viewname = 'V_TBZ3' )
       WHEN 'TBZ3K'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3'  viewname = 'V_TBZ3K' )

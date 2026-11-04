@@ -21,7 +21,8 @@ INTERFACE zif_bdt_explorer_types
       event_fm     TYPE ty_node_type VALUE 'EFM',  " TBZ1F function module of an event
       table        TYPE ty_node_type VALUE 'TAB',  " TBZ1H table
       data_set     TYPE ty_node_type VALUE 'SET',  " TBZ0Q data set
-      object_part  TYPE ty_node_type VALUE 'OBP',  " TBZ0  object part (e.g. BP role category)
+      object_part  TYPE ty_node_type VALUE 'OBP',  " TBZ0  object part (BUPA: BP view)
+      subheader    TYPE ty_node_type VALUE 'SHI',  " TBZJ2 subheader ID of an object part
       activity     TYPE ty_node_type VALUE 'ACT',  " TBZ0O activity
       search       TYPE ty_node_type VALUE 'SRCH', " search result root
     END OF c_type.
@@ -34,9 +35,18 @@ INTERFACE zif_bdt_explorer_types
       tables       TYPE ty_folder VALUE 'TABS',
       data_sets    TYPE ty_folder VALUE 'SETS',
       activities   TYPE ty_folder VALUE 'ACTS',
+      object_parts TYPE ty_folder VALUE 'OBPS',
+      " below an object part, as in view cluster BUPA_TBZ0
+      op_data_sets TYPE ty_folder VALUE 'OPSE', " TBZ0S
+      op_appls     TYPE ty_folder VALUE 'OPAP', " TBZ0C calling applications
+      op_sequences TYPE ty_folder VALUE 'OPSQ', " TBZ0U
+      op_views     TYPE ty_folder VALUE 'OPVI', " TBZ0F
+      op_subheader TYPE ty_folder VALUE 'OPSH', " TBZJ2
     END OF c_folder.
 
   "! A node carries its own key plus the key of the neighbour it was reached from.
+  "! Entries directly below an object part folder (OPxx) keep that folder code in FOLDER:
+  "! the assignment to the object part (TBZ0S/C/U/F, TBZJ2) belongs to them.
   "! Going down the hierarchy the parent keys are filled, going up (where-used)
   "! the child keys are filled. The transport uses the neighbour key to include
   "! the assignment entry (TBZ3K, TBZ3I, TBZ3H, TBZ3S) between both nodes.
@@ -60,6 +70,8 @@ INTERFACE zif_bdt_explorer_types
       action     TYPE bu_action_tbz0m,
       setid      TYPE bu_setid,
       rltyp      TYPE bu_rltyp,
+      vartp      TYPE bu_vartp,
+      shid       TYPE bu_sub_header_id,
       prgnm      TYPE progname,
       dynnr      TYPE dynnr,
       key_text   TYPE string,
