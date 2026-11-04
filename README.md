@@ -36,4 +36,4 @@ Mit [abapGit](https://abapgit.org) in ein Paket (z. B. `$BDT_EXPLORER` oder `ZBD
 
 Erste Version, noch nicht in einem SAP-System aktiviert. Alle Datenbankzugriffe sind statisch; beim Transport werden nur die Schlüsselspalten gelesen und direkt als E071K-TABKEY verwendet.
 
-Bestätigte Schlüssel (DD03L): TBZ0O, TBZ0R, TBZ1F, TBZ3R. Für TBZ3K, TBZ3H, TBZ4A und TBZ1C ist der Schlüssel angenommen und beim ersten Import zu prüfen.
+Gegen DD03L geprüfte Schlüssel: TBZ0O, TBZ0R, TBZ1C, TBZ1F, TBZ3H, TBZ3K, TBZ3R, TBZ4A. Die übrigen Schlüssel stammen aus DDIC-Referenzen (sapdatasheet.org).

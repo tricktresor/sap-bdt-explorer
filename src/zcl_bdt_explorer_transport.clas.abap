@@ -315,7 +315,7 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
           add_keys( iv_tabname = 'TBZ3T' it_keys = lt_tbz3t ).
 
         WHEN `TBZ3K`.
-          SELECT client, objap, varnr, posnr, dynid FROM tbz3k INTO TABLE @DATA(lt_tbz3k)
+          SELECT client, objap, varnr, posnr FROM tbz3k INTO TABLE @DATA(lt_tbz3k)
             WHERE objap = @is_filter-objap
               AND varnr IN @is_filter-varnr
               AND dynid IN @is_filter-dynid.
@@ -353,7 +353,7 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
           add_keys( iv_tabname = 'TBZ3D' it_keys = lt_tbz3d ).
 
         WHEN `TBZ3H`.
-          SELECT client, objap, absnr, posnr, sicht FROM tbz3h INTO TABLE @DATA(lt_tbz3h)
+          SELECT client, objap, absnr, posnr FROM tbz3h INTO TABLE @DATA(lt_tbz3h)
             WHERE objap = @is_filter-objap
               AND absnr IN @is_filter-absnr
               AND sicht IN @is_filter-sicht.
