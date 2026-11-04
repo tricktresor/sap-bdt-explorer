@@ -445,6 +445,9 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-data_set.
         lv_view = 'V_TBZ0Q'.
         lt_keys = VALUE #( ( viewfield = 'SETID' operator = 'EQ' value = is_node-setid ) ).
+      WHEN zif_bdt_explorer_types=>c_type-object_part.
+        lv_cluster = 'BUPA_TBZ0'.
+        lt_keys = VALUE #( ( viewfield = 'RLTYP' operator = 'EQ' value = is_node-rltyp ) ).
       WHEN zif_bdt_explorer_types=>c_type-activity
         OR zif_bdt_explorer_types=>c_type-field_status.
         lv_view = 'V_TBZ0O_2'.

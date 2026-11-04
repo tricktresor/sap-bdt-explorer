@@ -34,7 +34,7 @@ CLASS zcl_bdt_explorer_transport DEFINITION
 
   PRIVATE SECTION.
     CONSTANTS c_tables_of_object TYPE string
-      VALUE `TBZ1 TBZ1T TBZ0A TBZ0B TBZ1F TBZ1H TBZ1C TBZ0Q TBZ0R TBZ0O ` &
+      VALUE `TBZ1 TBZ1T TBZ0A TBZ0B TBZ0 TBZ0T TBZ0C TBZ0S TBZ1F TBZ1H TBZ1C TBZ0Q TBZ0R TBZ0O ` &
             `TBZ3 TBZ3T TBZ3K TBZ3A TBZ3B TBZ3I TBZ3C TBZ3D TBZ3H TBZ3E TBZ3F TBZ3S TBZ3W TBZ3X TBZ3R TBZ4A` ##NO_TEXT.
 
     TYPES ty_value TYPE c LENGTH 40.
@@ -56,7 +56,16 @@ CLASS zcl_bdt_explorer_transport DEFINITION
         fname  TYPE ty_range,
         action TYPE ty_range,
         setid  TYPE ty_range,
+        rltyp  TYPE ty_range,
       END OF ty_filter.
+
+    "! Maintenance dialog a table is recorded with, as SM30/SM34 do (E071K-MASTERTYPE etc.)
+    TYPES:
+      BEGIN OF ty_master,
+        mastertype TYPE e071k-mastertype,
+        mastername TYPE e071k-mastername,
+        viewname   TYPE e071k-viewname,
+      END OF ty_master.
 
     DATA mo_model TYPE REF TO zcl_bdt_explorer_model.
     DATA mt_visited TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
@@ -83,6 +92,14 @@ CLASS zcl_bdt_explorer_transport DEFINITION
       IMPORTING
         iv_tabname TYPE tabname
         it_keys    TYPE ANY TABLE.
+
+    "! Only the assignment of a foreign section/view to its parent
+    METHODS collect_assignment
+      IMPORTING is_node TYPE ty_node.
+
+    CLASS-METHODS get_master
+      IMPORTING iv_tabname       TYPE tabname
+      RETURNING VALUE(rs_master) TYPE ty_master.
 
     CLASS-METHODS eq
       IMPORTING iv_value        TYPE clike
@@ -122,6 +139,11 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
         IF ls_child-type = zif_bdt_explorer_types=>c_type-field_status.
           CONTINUE.
         ENDIF.
+        " Sections/views of other applications: only their assignment, not their content
+        IF mo_model->is_foreign( ls_child ) = abap_true.
+          collect_assignment( ls_child ).
+          CONTINUE.
+        ENDIF.
         add_node( is_node = ls_child iv_cascade = iv_cascade ).
       ENDLOOP.
     ENDIF.
@@ -142,7 +164,8 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
         IF iv_cascade = abap_true AND mo_model->get_appli_filter( ) IS INITIAL.
           read_keys( iv_tables = c_tables_of_object
                      is_filter = VALUE #( objap = lv_objap ) ).
-        ELSE.
+        ELSEIF mo_model->get_appli_filter( ) IS INITIAL.
+          " With an application filter the object itself (SAP's) is not transported
           read_keys( iv_tables = `TBZ1 TBZ1T`
                      is_filter = VALUE #( objap = lv_objap ) ).
         ENDIF.
@@ -238,6 +261,34 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-data_set.
         read_keys( iv_tables = `TBZ0Q TBZ0R`
                    is_filter = VALUE #( objap = lv_objap setid = eq( is_node-setid ) ) ).
+
+      WHEN zif_bdt_explorer_types=>c_type-object_part.
+        read_keys( iv_tables = `TBZ0 TBZ0T`
+                   is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) ) ).
+        IF is_node-appli IS NOT INITIAL.
+          read_keys( iv_tables = `TBZ0C`
+                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) appli = eq( is_node-appli ) ) ).
+        ENDIF.
+        IF is_node-setid IS NOT INITIAL.
+          read_keys( iv_tables = `TBZ0S`
+                     is_filter = VALUE #( objap = lv_objap rltyp = eq( is_node-rltyp ) setid = eq( is_node-setid ) ) ).
+        ENDIF.
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD collect_assignment.
+    CASE is_node-type.
+      WHEN zif_bdt_explorer_types=>c_type-section.
+        IF is_node-dynid IS NOT INITIAL.
+          read_keys( iv_tables = `TBZ3I`
+                     is_filter = VALUE #( objap = is_node-objap dynid = eq( is_node-dynid ) absnr = eq( is_node-absnr ) ) ).
+        ENDIF.
+      WHEN zif_bdt_explorer_types=>c_type-view.
+        IF is_node-absnr IS NOT INITIAL.
+          read_keys( iv_tables = `TBZ3H`
+                     is_filter = VALUE #( objap = is_node-objap absnr = eq( is_node-absnr ) sicht = eq( is_node-sicht ) ) ).
+        ENDIF.
     ENDCASE.
   ENDMETHOD.
 
@@ -268,6 +319,32 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
             WHERE objap = @is_filter-objap
               AND appli IN @is_filter-appli.
           add_keys( iv_tabname = 'TBZ0B' it_keys = lt_tbz0b ).
+
+        WHEN `TBZ0`.
+          SELECT client, objap, rltyp FROM tbz0 INTO TABLE @DATA(lt_tbz0)
+            WHERE objap = @is_filter-objap
+              AND rltyp IN @is_filter-rltyp.
+          add_keys( iv_tabname = 'TBZ0' it_keys = lt_tbz0 ).
+
+        WHEN `TBZ0T`.
+          SELECT client, spras, objap, rltyp FROM tbz0t INTO TABLE @DATA(lt_tbz0t)
+            WHERE objap = @is_filter-objap
+              AND rltyp IN @is_filter-rltyp.
+          add_keys( iv_tabname = 'TBZ0T' it_keys = lt_tbz0t ).
+
+        WHEN `TBZ0C`.
+          SELECT client, objap, rltyp, appli FROM tbz0c INTO TABLE @DATA(lt_tbz0c)
+            WHERE objap = @is_filter-objap
+              AND rltyp IN @is_filter-rltyp
+              AND appli IN @is_filter-appli.
+          add_keys( iv_tabname = 'TBZ0C' it_keys = lt_tbz0c ).
+
+        WHEN `TBZ0S`.
+          SELECT client, objap, rltyp, setid FROM tbz0s INTO TABLE @DATA(lt_tbz0s)
+            WHERE objap = @is_filter-objap
+              AND rltyp IN @is_filter-rltyp
+              AND setid IN @is_filter-setid.
+          add_keys( iv_tabname = 'TBZ0S' it_keys = lt_tbz0s ).
 
         WHEN `TBZ1F`.
           SELECT client, objcn, ztpkt, objap, posnr FROM tbz1f INTO TABLE @DATA(lt_tbz1f)
@@ -418,6 +495,7 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
     DATA lv_tabkey TYPE trobj_name.
 
     APPEND |{ iv_tabname }: { lines( it_keys ) } entries| TO mt_log.
+    DATA(ls_master) = get_master( iv_tabname ).
 
     " Key columns are leading and character-like: the selected row is the table key
     LOOP AT it_keys ASSIGNING FIELD-SYMBOL(<ls_key>).
@@ -425,10 +503,40 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       APPEND VALUE #( pgmid      = 'R3TR'
                       object     = 'TABU'
                       objname    = iv_tabname
-                      mastertype = 'TABU'
-                      mastername = iv_tabname
-                      tabkey     = lv_tabkey ) TO mt_e071k.
+                      mastertype = ls_master-mastertype
+                      mastername = ls_master-mastername
+                      viewname   = ls_master-viewname
+                      tabkey     = lv_tabkey
+                      sortflag   = '2' ) TO mt_e071k.
     ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD get_master.
+    " View clusters and views of the BDT transactions BUS0..BUS23 (report BUSVIEWS)
+    rs_master = SWITCH #( iv_tabname
+      WHEN 'TBZ1' OR 'TBZ1T'   THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ1'  viewname = 'V_TBZ1' )
+      WHEN 'TBZ0' OR 'TBZ0T'   THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0' )
+      WHEN 'TBZ0C'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0C' )
+      WHEN 'TBZ0S'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ0'  viewname = 'V_TBZ0S' )
+      WHEN 'TBZ1F'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPATBZ1AR' viewname = 'V_TBZ1F' )
+      WHEN 'TBZ3' OR 'TBZ3T'   THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3'  viewname = 'V_TBZ3' )
+      WHEN 'TBZ3K'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3'  viewname = 'V_TBZ3K' )
+      WHEN 'TBZ3A' OR 'TBZ3B'  THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPATBZ3A'  viewname = 'V_TBZ3A' )
+      WHEN 'TBZ3I'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPATBZ3A'  viewname = 'V_TBZ3I' )
+      WHEN 'TBZ3C' OR 'TBZ3D'  THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3C' viewname = 'V_TBZ3C' )
+      WHEN 'TBZ3H'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3C' viewname = 'V_TBZ3H' )
+      WHEN 'TBZ3E' OR 'TBZ3F'  THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3E' viewname = 'V_TBZ3E' )
+      WHEN 'TBZ3S'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ3E' viewname = 'V_TBZ3S' )
+      WHEN 'TBZ3W' OR 'TBZ3X'  THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPAFLDMOD' viewname = 'V_TBZ3W' )
+      WHEN 'TBZ3R'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPAFLDMOD' viewname = 'V_TBZ3R' )
+      WHEN 'TBZ4A'             THEN VALUE #( mastertype = 'CDAT' mastername = 'BUPA_TBZ4A' viewname = 'V_TBZ4A' )
+      WHEN 'TBZ0A' OR 'TBZ0B'  THEN VALUE #( mastertype = 'VDAT' mastername = 'V_TBZ0A'    viewname = 'V_TBZ0A' )
+      WHEN 'TBZ0Q' OR 'TBZ0R'  THEN VALUE #( mastertype = 'VDAT' mastername = 'V_TBZ0Q'    viewname = 'V_TBZ0Q' )
+      WHEN 'TBZ0O'             THEN VALUE #( mastertype = 'VDAT' mastername = 'V_TBZ0O_2'  viewname = 'V_TBZ0O_2' )
+      WHEN 'TBZ1H'             THEN VALUE #( mastertype = 'VDAT' mastername = 'V_TBZ1H'    viewname = 'V_TBZ1H' )
+      WHEN 'TBZ1C'             THEN VALUE #( mastertype = 'VDAT' mastername = 'V_TBZ1C'    viewname = 'V_TBZ1C' )
+      ELSE                          VALUE #( mastertype = 'TABU' mastername = iv_tabname ) ).
   ENDMETHOD.
 
 
@@ -455,12 +563,14 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " One object entry per maintenance dialog (CDAT/VDAT), as SM30/SM34 record it
     LOOP AT lt_e071k INTO DATA(ls_e071k).
-      READ TABLE lt_e071 TRANSPORTING NO FIELDS WITH KEY obj_name = ls_e071k-objname.
+      READ TABLE lt_e071 TRANSPORTING NO FIELDS
+        WITH KEY object = ls_e071k-mastertype obj_name = ls_e071k-mastername.
       IF sy-subrc <> 0.
         APPEND VALUE #( pgmid    = 'R3TR'
-                        object   = 'TABU'
-                        obj_name = ls_e071k-objname
+                        object   = ls_e071k-mastertype
+                        obj_name = ls_e071k-mastername
                         objfunc  = 'K' ) TO lt_e071.
       ENDIF.
     ENDLOOP.
@@ -496,7 +606,7 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    ev_message = |{ lines( lt_e071k ) } keys of { lines( lt_e071 ) } tables written to { ev_order }/{ lv_task }|.
+    ev_message = |{ lines( lt_e071k ) } keys of { lines( lt_e071 ) } maintenance objects written to { ev_order }/{ lv_task }|.
   ENDMETHOD.
 
 

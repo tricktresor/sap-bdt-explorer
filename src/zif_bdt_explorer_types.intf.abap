@@ -21,6 +21,7 @@ INTERFACE zif_bdt_explorer_types
       event_fm     TYPE ty_node_type VALUE 'EFM',  " TBZ1F function module of an event
       table        TYPE ty_node_type VALUE 'TAB',  " TBZ1H table
       data_set     TYPE ty_node_type VALUE 'SET',  " TBZ0Q data set
+      object_part  TYPE ty_node_type VALUE 'OBP',  " TBZ0  object part (e.g. BP role category)
       activity     TYPE ty_node_type VALUE 'ACT',  " TBZ0O activity
       search       TYPE ty_node_type VALUE 'SRCH', " search result root
     END OF c_type.
@@ -58,6 +59,7 @@ INTERFACE zif_bdt_explorer_types
       fname      TYPE rs38l_fnam,
       action     TYPE bu_action_tbz0m,
       setid      TYPE bu_setid,
+      rltyp      TYPE bu_rltyp,
       prgnm      TYPE progname,
       dynnr      TYPE dynnr,
       key_text   TYPE string,

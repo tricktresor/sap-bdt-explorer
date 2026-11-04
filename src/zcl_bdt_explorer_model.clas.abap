@@ -49,6 +49,12 @@ CLASS zcl_bdt_explorer_model DEFINITION
       RETURNING
         VALUE(rt_nodes)   TYPE tt_node.
 
+    "! With an application filter: a section or view that belongs to other applications only.
+    "! Below a relevant screen it is shown, but transported only as assignment.
+    METHODS is_foreign
+      IMPORTING is_node           TYPE ty_node
+      RETURNING VALUE(rv_foreign) TYPE abap_bool.
+
     CLASS-METHODS get_type_text
       IMPORTING iv_type        TYPE zif_bdt_explorer_types=>ty_node_type
       RETURNING VALUE(rv_text) TYPE string.
@@ -93,6 +99,7 @@ CLASS zcl_bdt_explorer_model DEFINITION
     " view of the selected applications. Below a relevant screen everything is shown.
     DATA mt_rel_varnr TYPE HASHED TABLE OF bu_varnr WITH UNIQUE KEY table_line.
     DATA mt_rel_dynid TYPE HASHED TABLE OF bu_dynid WITH UNIQUE KEY table_line.
+    DATA mt_rel_absnr TYPE HASHED TABLE OF bu_absnr WITH UNIQUE KEY table_line.
     DATA mt_rel_setid TYPE HASHED TABLE OF bu_setid WITH UNIQUE KEY table_line.
 
     METHODS determine_relevance.
@@ -148,6 +155,9 @@ CLASS zcl_bdt_explorer_model DEFINITION
     METHODS data_sets
       IMPORTING is_node         TYPE ty_node
       RETURNING VALUE(rt_nodes) TYPE tt_node.
+    METHODS data_set_content
+      IMPORTING is_node         TYPE ty_node
+      RETURNING VALUE(rt_nodes) TYPE tt_node.
     METHODS activities
       IMPORTING is_node         TYPE ty_node
       RETURNING VALUE(rt_nodes) TYPE tt_node.
@@ -192,6 +202,13 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
 
   METHOD determine_relevance.
+    SELECT DISTINCT h~absnr
+      FROM tbz3h AS h
+      INNER JOIN tbz3e AS e ON e~objap = h~objap AND e~sicht = h~sicht
+      INTO TABLE @mt_rel_absnr
+      WHERE h~objap = @mv_objap
+        AND e~appli IN @mt_appli.
+
     SELECT DISTINCT i~dynid
       FROM tbz3i AS i
       INNER JOIN tbz3h AS h ON h~objap = i~objap AND h~absnr = i~absnr
@@ -214,6 +231,19 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       WHERE objap = @mv_objap
         AND appli IN @mt_appli
         AND setid <> @space.
+  ENDMETHOD.
+
+
+  METHOD is_foreign.
+    IF mt_appli IS INITIAL.
+      RETURN.
+    ENDIF.
+    CASE is_node-type.
+      WHEN zif_bdt_explorer_types=>c_type-section.
+        rv_foreign = xsdbool( NOT line_exists( mt_rel_absnr[ table_line = is_node-absnr ] ) ).
+      WHEN zif_bdt_explorer_types=>c_type-view.
+        rv_foreign = xsdbool( is_node-appli NOT IN mt_appli ).
+    ENDCASE.
   ENDMETHOD.
 
 
@@ -282,6 +312,8 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         rt_nodes = field_group_content( is_node ).
       WHEN zif_bdt_explorer_types=>c_type-event.
         rt_nodes = event_function_modules( is_node ).
+      WHEN zif_bdt_explorer_types=>c_type-data_set.
+        rt_nodes = data_set_content( is_node ).
     ENDCASE.
     mark_expandable( CHANGING ct_nodes = rt_nodes ).
   ENDMETHOD.
@@ -497,7 +529,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         OR zif_bdt_explorer_types=>c_type-field_status
         OR zif_bdt_explorer_types=>c_type-event_fm
         OR zif_bdt_explorer_types=>c_type-table
-        OR zif_bdt_explorer_types=>c_type-data_set
+        OR zif_bdt_explorer_types=>c_type-object_part
         OR zif_bdt_explorer_types=>c_type-activity.
         rs_node-expandable = abap_false.
       WHEN OTHERS.
@@ -566,6 +598,21 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         AND e~appli = @is_node-appli
       ORDER BY e~sicht.
     rt_nodes = views_to_nodes( is_from = is_node it_views = lt_views iv_up = abap_false ).
+
+    SELECT c~rltyp, t~bez50
+      FROM tbz0c AS c
+      LEFT OUTER JOIN tbz0t AS t ON t~objap = c~objap AND t~rltyp = c~rltyp AND t~spras = @mv_langu
+      INTO TABLE @DATA(lt_parts)
+      WHERE c~objap = @mv_objap
+        AND c~appli = @is_node-appli
+      ORDER BY c~rltyp.
+    LOOP AT lt_parts INTO DATA(ls_part).
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-object_part ).
+      ls_node-rltyp    = ls_part-rltyp.
+      ls_node-key_text = ls_part-rltyp.
+      ls_node-text     = ls_part-bez50.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
   ENDMETHOD.
 
 
@@ -771,6 +818,24 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD data_set_content.
+    SELECT s~rltyp, t~bez50
+      FROM tbz0s AS s
+      LEFT OUTER JOIN tbz0t AS t ON t~objap = s~objap AND t~rltyp = s~rltyp AND t~spras = @mv_langu
+      INTO TABLE @DATA(lt_parts)
+      WHERE s~objap = @mv_objap
+        AND s~setid = @is_node-setid
+      ORDER BY s~rltyp.
+    LOOP AT lt_parts INTO DATA(ls_part).
+      DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-object_part ).
+      ls_node-rltyp    = ls_part-rltyp.
+      ls_node-key_text = ls_part-rltyp.
+      ls_node-text     = ls_part-bez50.
+      APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
   METHOD activities.
     DATA lt_act TYPE STANDARD TABLE OF bu_action_tbz0m WITH EMPTY KEY.
 
@@ -791,6 +856,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
   METHOD mark_expandable.
     DATA lt_appli TYPE STANDARD TABLE OF bu_appli WITH EMPTY KEY.
+    DATA lt_setid TYPE STANDARD TABLE OF bu_setid WITH EMPTY KEY.
     DATA lt_varnr TYPE STANDARD TABLE OF bu_varnr WITH EMPTY KEY.
     DATA lt_dynid TYPE STANDARD TABLE OF bu_dynid WITH EMPTY KEY.
     DATA lt_dynid_up TYPE STANDARD TABLE OF bu_dynid WITH EMPTY KEY.
@@ -804,11 +870,24 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
     DATA(lt_app) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-application ) ( n ) ).
     IF lt_app IS NOT INITIAL.
-      " views of the application (TBZ3E)
+      " views (TBZ3E) or object parts (TBZ0C) of the application
       SELECT appli FROM tbz3e INTO TABLE @lt_appli
         FOR ALL ENTRIES IN @lt_app
         WHERE objap = @mv_objap
           AND appli = @lt_app-appli.
+      SELECT appli FROM tbz0c APPENDING TABLE @lt_appli
+        FOR ALL ENTRIES IN @lt_app
+        WHERE objap = @mv_objap
+          AND appli = @lt_app-appli.
+    ENDIF.
+
+    DATA(lt_set) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-data_set ) ( n ) ).
+    IF lt_set IS NOT INITIAL.
+      " object parts of the data set (TBZ0S)
+      SELECT setid FROM tbz0s INTO TABLE @lt_setid
+        FOR ALL ENTRIES IN @lt_set
+        WHERE objap = @mv_objap
+          AND setid = @lt_set-setid.
     ENDIF.
 
     DATA(lt_seq) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-sequence ) ( n ) ).
@@ -870,15 +949,17 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         FOR ALL ENTRIES IN @lt_fg
         WHERE objap = @mv_objap
           AND fldgr = @lt_fg-fldgr.
-      SELECT SINGLE action FROM tbz0o INTO @DATA(lv_action)
+      SELECT COUNT( * ) FROM tbz0o
         WHERE objap = @mv_objap.
-      lv_has_status = xsdbool( sy-subrc = 0 ).
+      lv_has_status = xsdbool( sy-dbcnt > 0 ).
     ENDIF.
 
     LOOP AT ct_nodes ASSIGNING FIELD-SYMBOL(<ls_node>) WHERE expandable = abap_true.
       CASE <ls_node>-type.
         WHEN zif_bdt_explorer_types=>c_type-application.
           <ls_node>-expandable = xsdbool( line_exists( lt_appli[ table_line = <ls_node>-appli ] ) ).
+        WHEN zif_bdt_explorer_types=>c_type-data_set.
+          <ls_node>-expandable = xsdbool( line_exists( lt_setid[ table_line = <ls_node>-setid ] ) ).
         WHEN zif_bdt_explorer_types=>c_type-sequence.
           <ls_node>-expandable = xsdbool( <ls_node>-up = abap_false
                                       AND line_exists( lt_varnr[ table_line = <ls_node>-varnr ] ) ).
@@ -965,6 +1046,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-event_fm     THEN `Event FM`
       WHEN zif_bdt_explorer_types=>c_type-table        THEN `Table`
       WHEN zif_bdt_explorer_types=>c_type-data_set     THEN `Data set`
+      WHEN zif_bdt_explorer_types=>c_type-object_part  THEN `Object part`
       WHEN zif_bdt_explorer_types=>c_type-activity     THEN `Activity`
       WHEN zif_bdt_explorer_types=>c_type-search       THEN `Search`
       ELSE `` ).
