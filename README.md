@@ -42,4 +42,4 @@ Jeder Push auf `main` und jeder Pull Request wird per GitHub Action mit [abaplin
 
 Erste Version, noch nicht in einem SAP-System aktiviert. Alle Datenbankzugriffe sind statisch; beim Transport werden nur die Schlüsselspalten gelesen und direkt als E071K-TABKEY verwendet.
 
-Gegen DD03L geprüfte Schlüssel: TBZ0O, TBZ0R, TBZ1C, TBZ1F, TBZ3H, TBZ3K, TBZ3R, TBZ4A. Die übrigen Schlüssel stammen aus DDIC-Referenzen (sapdatasheet.org).
+Alle verwendeten TBZ*-Tabellen (Schlüssel, Felder, Datenelemente) und die Schnittstellen der aufgerufenen Funktionsbausteine sind gegen DD03L bzw. FUPARAREF abgeglichen.
