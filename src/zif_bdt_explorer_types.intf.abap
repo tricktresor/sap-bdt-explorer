@@ -66,13 +66,6 @@ INTERFACE zif_bdt_explorer_types
     END OF ty_node,
     tt_node TYPE STANDARD TABLE OF ty_node WITH DEFAULT KEY.
 
-  TYPES:
-    BEGIN OF ty_tab_cond,
-      tabname   TYPE tabname,
-      sql_where TYPE string,
-    END OF ty_tab_cond,
-    tt_tab_cond TYPE STANDARD TABLE OF ty_tab_cond WITH DEFAULT KEY.
-
   TYPES ty_appli_range TYPE RANGE OF bu_appli.
 
 ENDINTERFACE.

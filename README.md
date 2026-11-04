@@ -34,4 +34,6 @@ Mit [abapGit](https://abapgit.org) in ein Paket (z. B. `$BDT_EXPLORER` oder `ZBD
 
 ## Status
 
-Erste Version, noch nicht in einem SAP-System aktiviert. Tabellen- und Feldnamen stammen aus dem DDIC-Stand von SAP ERP / S/4HANA und sollten beim ersten Import geprüft werden.
+Erste Version, noch nicht in einem SAP-System aktiviert. Alle Datenbankzugriffe sind statisch; beim Transport werden nur die Schlüsselspalten gelesen und direkt als E071K-TABKEY verwendet.
+
+Bestätigte Schlüssel (DD03L): TBZ0O, TBZ0R, TBZ1F, TBZ3R. Für TBZ3K, TBZ3H, TBZ4A und TBZ1C ist der Schlüssel angenommen und beim ersten Import zu prüfen.

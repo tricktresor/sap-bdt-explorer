@@ -62,6 +62,8 @@ CLASS zcl_bdt_explorer_model DEFINITION
 
   PRIVATE SECTION.
     CONSTANTS c_max_hits TYPE i VALUE 500.
+    "! Length of each TBZ0O-FELDSTLST1..7 (one status character per field group)
+    CONSTANTS c_status_length TYPE i VALUE 250.
 
     TYPES:
       BEGIN OF ty_view_row,
@@ -697,17 +699,18 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
 
   METHOD data_sets.
-    DATA lt_sets TYPE STANDARD TABLE OF bu_setid WITH EMPTY KEY.
+    SELECT q~setid, t~title
+      FROM tbz0q AS q
+      LEFT OUTER JOIN tbz0r AS t ON t~objap = q~objap AND t~setid = q~setid AND t~spras = @mv_langu
+      INTO TABLE @DATA(lt_sets)
+      WHERE q~objap = @mv_objap
+      ORDER BY q~setid.
 
-    SELECT setid FROM tbz0q
-      INTO TABLE @lt_sets
-      WHERE objap = @mv_objap
-      ORDER BY setid.
-
-    LOOP AT lt_sets INTO DATA(lv_setid).
+    LOOP AT lt_sets INTO DATA(ls_set).
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-data_set ).
-      ls_node-setid    = lv_setid.
-      ls_node-key_text = lv_setid.
+      ls_node-setid    = ls_set-setid.
+      ls_node-key_text = ls_set-setid.
+      ls_node-text     = ls_set-title.
       APPEND ls_node TO rt_nodes.
     ENDLOOP.
   ENDMETHOD.
@@ -792,22 +795,21 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
   METHOD get_field_status.
     " TBZ0O-FELDSTLST1..7 form one long string with one status character per field group number
-    DATA lv_length TYPE i.
-    DATA(lv_offset) = CONV i( iv_fldgr ) - 1.
-    CHECK lv_offset >= 0.
+    DATA(lv_index) = CONV i( iv_fldgr ) - 1.
+    IF lv_index < 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_offset) = lv_index MOD c_status_length.
 
-    DO 7 TIMES.
-      ASSIGN COMPONENT |FELDSTLST{ sy-index }| OF STRUCTURE is_tbz0o TO FIELD-SYMBOL(<lv_part>).
-      IF sy-subrc <> 0.
-        RETURN.
-      ENDIF.
-      DESCRIBE FIELD <lv_part> LENGTH lv_length IN CHARACTER MODE.
-      IF lv_offset < lv_length.
-        rv_status = <lv_part>+lv_offset(1).
-        RETURN.
-      ENDIF.
-      lv_offset = lv_offset - lv_length.
-    ENDDO.
+    CASE lv_index DIV c_status_length.
+      WHEN 0. rv_status = is_tbz0o-feldstlst1+lv_offset(1).
+      WHEN 1. rv_status = is_tbz0o-feldstlst2+lv_offset(1).
+      WHEN 2. rv_status = is_tbz0o-feldstlst3+lv_offset(1).
+      WHEN 3. rv_status = is_tbz0o-feldstlst4+lv_offset(1).
+      WHEN 4. rv_status = is_tbz0o-feldstlst5+lv_offset(1).
+      WHEN 5. rv_status = is_tbz0o-feldstlst6+lv_offset(1).
+      WHEN 6. rv_status = is_tbz0o-feldstlst7+lv_offset(1).
+    ENDCASE.
   ENDMETHOD.
 
 

@@ -1,5 +1,6 @@
 "! Collects the TBZ* entries behind selected explorer nodes (optionally with
 "! everything below them) and writes them as table keys into a customizing request.
+"! Only the key columns are selected; their flat character-like row is the TABKEY.
 CLASS zcl_bdt_explorer_transport DEFINITION
   PUBLIC
   FINAL
@@ -19,10 +20,6 @@ CLASS zcl_bdt_explorer_transport DEFINITION
         is_node    TYPE ty_node
         iv_cascade TYPE abap_bool DEFAULT abap_true.
 
-    METHODS get_conditions
-      RETURNING VALUE(rt_cond) TYPE zif_bdt_explorer_types=>tt_tab_cond.
-
-    "! Reads the entries for all collected conditions and builds the table keys
     METHODS get_keys
       RETURNING VALUE(rt_e071k) TYPE tt_e071k.
 
@@ -39,14 +36,33 @@ CLASS zcl_bdt_explorer_transport DEFINITION
     CONSTANTS c_tables_of_object TYPE string
       VALUE `TBZ1 TBZ1T TBZ0A TBZ0B TBZ1F TBZ1H TBZ1C TBZ0Q TBZ0R TBZ0O TBZ3 TBZ3T TBZ3K TBZ3A TBZ3B TBZ3I TBZ3C TBZ3D TBZ3H TBZ3E TBZ3F TBZ3S TBZ3W TBZ3X TBZ3R TBZ4A` ##NO_TEXT.
 
+    TYPES ty_value TYPE c LENGTH 40.
+    TYPES ty_range TYPE RANGE OF ty_value.
+
+    "! Restriction for the key selection; an empty range means all values
+    TYPES:
+      BEGIN OF ty_filter,
+        objap  TYPE bu_objap,
+        appli  TYPE ty_range,
+        varnr  TYPE ty_range,
+        dynid  TYPE ty_range,
+        absnr  TYPE ty_range,
+        sicht  TYPE ty_range,
+        fldgr  TYPE ty_range,
+        tabnm  TYPE ty_range,
+        fldnm  TYPE ty_range,
+        ztpkt  TYPE ty_range,
+        fname  TYPE ty_range,
+        action TYPE ty_range,
+        setid  TYPE ty_range,
+      END OF ty_filter.
+
     DATA mo_model TYPE REF TO zcl_bdt_explorer_model.
-    DATA mt_cond TYPE zif_bdt_explorer_types=>tt_tab_cond.
     DATA mt_visited TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
     DATA mt_e071k TYPE tt_e071k.
     DATA mt_log TYPE string_table.
-    DATA mv_keys_built TYPE abap_bool.
 
-    METHODS node_conditions
+    METHODS collect
       IMPORTING
         is_node    TYPE ty_node
         iv_cascade TYPE abap_bool.
@@ -56,30 +72,20 @@ CLASS zcl_bdt_explorer_transport DEFINITION
       IMPORTING is_node         TYPE ty_node
       RETURNING VALUE(rv_group) TYPE abap_bool.
 
-    METHODS add_cond
+    "! @parameter iv_tables | space separated table names
+    METHODS read_keys
+      IMPORTING
+        iv_tables TYPE string
+        is_filter TYPE ty_filter.
+
+    METHODS add_keys
       IMPORTING
         iv_tabname TYPE tabname
-        iv_where   TYPE string.
-
-    METHODS build_keys.
-
-    METHODS get_key_fields
-      IMPORTING iv_tabname       TYPE tabname
-      RETURNING VALUE(rt_fields) TYPE string_table.
-
-    CLASS-METHODS build_tabkey
-      IMPORTING
-        is_row           TYPE any
-        it_key_fields    TYPE string_table
-      RETURNING
-        VALUE(rv_tabkey) TYPE trobj_name.
+        it_keys    TYPE ANY TABLE.
 
     CLASS-METHODS eq
-      IMPORTING
-        iv_field       TYPE string
-        iv_value       TYPE csequence
-      RETURNING
-        VALUE(rv_cond) TYPE string.
+      IMPORTING iv_value        TYPE clike
+      RETURNING VALUE(rt_range) TYPE ty_range.
 ENDCLASS.
 
 
@@ -99,9 +105,8 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
-    mv_keys_built = abap_false.
 
-    node_conditions( is_node = is_node iv_cascade = iv_cascade ).
+    collect( is_node = is_node iv_cascade = iv_cascade ).
 
     " The whole object without application filter is collected by OBJAP directly
     IF is_node-type = zif_bdt_explorer_types=>c_type-object AND mo_model->get_appli_filter( ) IS INITIAL.
@@ -128,215 +133,308 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD node_conditions.
-    DATA(lv_objap) = eq( iv_field = `OBJAP` iv_value = is_node-objap ).
+  METHOD collect.
+    DATA(lv_objap) = is_node-objap.
 
     CASE is_node-type.
       WHEN zif_bdt_explorer_types=>c_type-object.
         IF iv_cascade = abap_true AND mo_model->get_appli_filter( ) IS INITIAL.
-          SPLIT c_tables_of_object AT space INTO TABLE DATA(lt_tables).
-          LOOP AT lt_tables INTO DATA(lv_table).
-            add_cond( iv_tabname = CONV #( lv_table ) iv_where = lv_objap ).
-          ENDLOOP.
+          read_keys( iv_tables = c_tables_of_object
+                     is_filter = VALUE #( objap = lv_objap ) ).
         ELSE.
-          add_cond( iv_tabname = 'TBZ1'  iv_where = lv_objap ).
-          add_cond( iv_tabname = 'TBZ1T' iv_where = lv_objap ).
+          read_keys( iv_tables = `TBZ1 TBZ1T`
+                     is_filter = VALUE #( objap = lv_objap ) ).
         ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-application.
-        DATA(lv_appli) = |{ lv_objap } AND { eq( iv_field = `APPLI` iv_value = is_node-appli ) }|.
-        add_cond( iv_tabname = 'TBZ0A' iv_where = lv_appli ).
-        add_cond( iv_tabname = 'TBZ0B' iv_where = lv_appli ).
+        read_keys( iv_tables = `TBZ0A TBZ0B`
+                   is_filter = VALUE #( objap = lv_objap appli = eq( is_node-appli ) ) ).
 
       WHEN zif_bdt_explorer_types=>c_type-sequence.
-        DATA(lv_varnr) = |{ lv_objap } AND { eq( iv_field = `VARNR` iv_value = is_node-varnr ) }|.
-        add_cond( iv_tabname = 'TBZ3'  iv_where = lv_varnr ).
-        add_cond( iv_tabname = 'TBZ3T' iv_where = lv_varnr ).
+        read_keys( iv_tables = `TBZ3 TBZ3T`
+                   is_filter = VALUE #( objap = lv_objap varnr = eq( is_node-varnr ) ) ).
         IF is_node-dynid IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3K'
-                    iv_where   = |{ lv_varnr } AND { eq( iv_field = `DYNID` iv_value = is_node-dynid ) }| ).
+          read_keys( iv_tables = `TBZ3K`
+                     is_filter = VALUE #( objap = lv_objap varnr = eq( is_node-varnr ) dynid = eq( is_node-dynid ) ) ).
         ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-screen.
-        DATA(lv_dynid) = |{ lv_objap } AND { eq( iv_field = `DYNID` iv_value = is_node-dynid ) }|.
-        add_cond( iv_tabname = 'TBZ3A' iv_where = lv_dynid ).
-        add_cond( iv_tabname = 'TBZ3B' iv_where = lv_dynid ).
+        read_keys( iv_tables = `TBZ3A TBZ3B`
+                   is_filter = VALUE #( objap = lv_objap dynid = eq( is_node-dynid ) ) ).
         IF is_node-varnr IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3K'
-                    iv_where   = |{ lv_dynid } AND { eq( iv_field = `VARNR` iv_value = is_node-varnr ) }| ).
+          read_keys( iv_tables = `TBZ3K`
+                     is_filter = VALUE #( objap = lv_objap dynid = eq( is_node-dynid ) varnr = eq( is_node-varnr ) ) ).
         ENDIF.
         IF is_node-absnr IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3I'
-                    iv_where   = |{ lv_dynid } AND { eq( iv_field = `ABSNR` iv_value = is_node-absnr ) }| ).
+          read_keys( iv_tables = `TBZ3I`
+                     is_filter = VALUE #( objap = lv_objap dynid = eq( is_node-dynid ) absnr = eq( is_node-absnr ) ) ).
         ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-section.
-        DATA(lv_absnr) = |{ lv_objap } AND { eq( iv_field = `ABSNR` iv_value = is_node-absnr ) }|.
-        add_cond( iv_tabname = 'TBZ3C' iv_where = lv_absnr ).
-        add_cond( iv_tabname = 'TBZ3D' iv_where = lv_absnr ).
+        read_keys( iv_tables = `TBZ3C TBZ3D`
+                   is_filter = VALUE #( objap = lv_objap absnr = eq( is_node-absnr ) ) ).
         IF is_node-dynid IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3I'
-                    iv_where   = |{ lv_absnr } AND { eq( iv_field = `DYNID` iv_value = is_node-dynid ) }| ).
+          read_keys( iv_tables = `TBZ3I`
+                     is_filter = VALUE #( objap = lv_objap absnr = eq( is_node-absnr ) dynid = eq( is_node-dynid ) ) ).
         ENDIF.
         IF is_node-sicht IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3H'
-                    iv_where   = |{ lv_absnr } AND { eq( iv_field = `SICHT` iv_value = is_node-sicht ) }| ).
+          read_keys( iv_tables = `TBZ3H`
+                     is_filter = VALUE #( objap = lv_objap absnr = eq( is_node-absnr ) sicht = eq( is_node-sicht ) ) ).
         ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-view.
-        DATA(lv_sicht) = |{ lv_objap } AND { eq( iv_field = `SICHT` iv_value = is_node-sicht ) }|.
-        add_cond( iv_tabname = 'TBZ3E' iv_where = lv_sicht ).
-        add_cond( iv_tabname = 'TBZ3F' iv_where = lv_sicht ).
-        add_cond( iv_tabname = 'TBZ4A' iv_where = lv_sicht ).
+        read_keys( iv_tables = `TBZ3E TBZ3F TBZ4A`
+                   is_filter = VALUE #( objap = lv_objap sicht = eq( is_node-sicht ) ) ).
         IF is_node-absnr IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3H'
-                    iv_where   = |{ lv_sicht } AND { eq( iv_field = `ABSNR` iv_value = is_node-absnr ) }| ).
+          read_keys( iv_tables = `TBZ3H`
+                     is_filter = VALUE #( objap = lv_objap sicht = eq( is_node-sicht ) absnr = eq( is_node-absnr ) ) ).
         ENDIF.
         IF is_node-fldgr IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3S'
-                    iv_where   = |{ lv_sicht } AND { eq( iv_field = `FLDGR` iv_value = is_node-fldgr ) }| ).
+          read_keys( iv_tables = `TBZ3S`
+                     is_filter = VALUE #( objap = lv_objap sicht = eq( is_node-sicht ) fldgr = eq( is_node-fldgr ) ) ).
         ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-field_group.
-        DATA(lv_fldgr) = |{ lv_objap } AND { eq( iv_field = `FLDGR` iv_value = is_node-fldgr ) }|.
-        add_cond( iv_tabname = 'TBZ3W' iv_where = lv_fldgr ).
-        add_cond( iv_tabname = 'TBZ3X' iv_where = lv_fldgr ).
+        read_keys( iv_tables = `TBZ3W TBZ3X`
+                   is_filter = VALUE #( objap = lv_objap fldgr = eq( is_node-fldgr ) ) ).
         IF is_node-sicht IS NOT INITIAL.
-          add_cond( iv_tabname = 'TBZ3S'
-                    iv_where   = |{ lv_fldgr } AND { eq( iv_field = `SICHT` iv_value = is_node-sicht ) }| ).
+          read_keys( iv_tables = `TBZ3S`
+                     is_filter = VALUE #( objap = lv_objap fldgr = eq( is_node-fldgr ) sicht = eq( is_node-sicht ) ) ).
         ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-field.
-        add_cond( iv_tabname = 'TBZ3R'
-                  iv_where   = |{ lv_objap } AND { eq( iv_field = `FLDGR` iv_value = is_node-fldgr ) }| &&
-                               | AND { eq( iv_field = `TABNM` iv_value = is_node-tabnm ) }| &&
-                               | AND { eq( iv_field = `FLDNM` iv_value = is_node-fldnm ) }| ).
-        add_cond( iv_tabname = 'TBZ1C'
-                  iv_where   = |{ lv_objap } AND { eq( iv_field = `DYNPTABNM` iv_value = is_node-tabnm ) }| &&
-                               | AND { eq( iv_field = `DYNPFLDNM` iv_value = is_node-fldnm ) }| ).
+        read_keys( iv_tables = `TBZ3R`
+                   is_filter = VALUE #( objap = lv_objap
+                                        fldgr = eq( is_node-fldgr )
+                                        tabnm = eq( is_node-tabnm )
+                                        fldnm = eq( is_node-fldnm ) ) ).
+        read_keys( iv_tables = `TBZ1C`
+                   is_filter = VALUE #( objap = lv_objap
+                                        tabnm = eq( is_node-tabnm )
+                                        fldnm = eq( is_node-fldnm ) ) ).
 
       WHEN zif_bdt_explorer_types=>c_type-field_status
         OR zif_bdt_explorer_types=>c_type-activity.
-        add_cond( iv_tabname = 'TBZ0O'
-                  iv_where   = |{ lv_objap } AND { eq( iv_field = `ACTION` iv_value = is_node-action ) }| ).
+        read_keys( iv_tables = `TBZ0O`
+                   is_filter = VALUE #( objap = lv_objap action = eq( is_node-action ) ) ).
 
       WHEN zif_bdt_explorer_types=>c_type-event_fm.
-        add_cond( iv_tabname = 'TBZ1F'
-                  iv_where   = |{ lv_objap } AND { eq( iv_field = `ZTPKT` iv_value = is_node-ztpkt ) }| &&
-                               | AND { eq( iv_field = `FNAME` iv_value = is_node-fname ) }| &&
-                               | AND { eq( iv_field = `APPLI` iv_value = is_node-appli ) }| ).
+        read_keys( iv_tables = `TBZ1F`
+                   is_filter = VALUE #( objap = lv_objap
+                                        ztpkt = eq( is_node-ztpkt )
+                                        fname = eq( is_node-fname )
+                                        appli = eq( is_node-appli ) ) ).
 
       WHEN zif_bdt_explorer_types=>c_type-table.
-        add_cond( iv_tabname = 'TBZ1H'
-                  iv_where   = |{ lv_objap } AND { eq( iv_field = `TABNM` iv_value = is_node-tabnm ) }| ).
+        read_keys( iv_tables = `TBZ1H`
+                   is_filter = VALUE #( objap = lv_objap tabnm = eq( is_node-tabnm ) ) ).
 
       WHEN zif_bdt_explorer_types=>c_type-data_set.
-        DATA(lv_setid) = |{ lv_objap } AND { eq( iv_field = `SETID` iv_value = is_node-setid ) }|.
-        add_cond( iv_tabname = 'TBZ0Q' iv_where = lv_setid ).
-        add_cond( iv_tabname = 'TBZ0R' iv_where = lv_setid ).
+        read_keys( iv_tables = `TBZ0Q TBZ0R`
+                   is_filter = VALUE #( objap = lv_objap setid = eq( is_node-setid ) ) ).
     ENDCASE.
   ENDMETHOD.
 
 
-  METHOD add_cond.
-    READ TABLE mt_cond TRANSPORTING NO FIELDS WITH KEY tabname = iv_tabname sql_where = iv_where.
-    IF sy-subrc <> 0.
-      APPEND VALUE #( tabname = iv_tabname sql_where = iv_where ) TO mt_cond.
-    ENDIF.
+  METHOD read_keys.
+    SPLIT iv_tables AT space INTO TABLE DATA(lt_tables).
+
+    LOOP AT lt_tables INTO DATA(lv_table).
+      CASE lv_table.
+        WHEN `TBZ1`.
+          SELECT client, objap FROM tbz1 INTO TABLE @DATA(lt_tbz1)
+            WHERE objap = @is_filter-objap.
+          add_keys( iv_tabname = 'TBZ1' it_keys = lt_tbz1 ).
+
+        WHEN `TBZ1T`.
+          SELECT client, spras, objap FROM tbz1t INTO TABLE @DATA(lt_tbz1t)
+            WHERE objap = @is_filter-objap.
+          add_keys( iv_tabname = 'TBZ1T' it_keys = lt_tbz1t ).
+
+        WHEN `TBZ0A`.
+          SELECT client, objap, appli FROM tbz0a INTO TABLE @DATA(lt_tbz0a)
+            WHERE objap = @is_filter-objap
+              AND appli IN @is_filter-appli.
+          add_keys( iv_tabname = 'TBZ0A' it_keys = lt_tbz0a ).
+
+        WHEN `TBZ0B`.
+          SELECT client, spras, objap, appli FROM tbz0b INTO TABLE @DATA(lt_tbz0b)
+            WHERE objap = @is_filter-objap
+              AND appli IN @is_filter-appli.
+          add_keys( iv_tabname = 'TBZ0B' it_keys = lt_tbz0b ).
+
+        WHEN `TBZ1F`.
+          SELECT client, objcn, ztpkt, objap, posnr FROM tbz1f INTO TABLE @DATA(lt_tbz1f)
+            WHERE objap = @is_filter-objap
+              AND ztpkt IN @is_filter-ztpkt
+              AND fname IN @is_filter-fname
+              AND appli IN @is_filter-appli.
+          add_keys( iv_tabname = 'TBZ1F' it_keys = lt_tbz1f ).
+
+        WHEN `TBZ1H`.
+          SELECT client, objap, tabnm FROM tbz1h INTO TABLE @DATA(lt_tbz1h)
+            WHERE objap = @is_filter-objap
+              AND tabnm IN @is_filter-tabnm.
+          add_keys( iv_tabname = 'TBZ1H' it_keys = lt_tbz1h ).
+
+        WHEN `TBZ1C`.
+          SELECT client, objap, dynptabnm, dynpfldnm FROM tbz1c INTO TABLE @DATA(lt_tbz1c)
+            WHERE objap = @is_filter-objap
+              AND dynptabnm IN @is_filter-tabnm
+              AND dynpfldnm IN @is_filter-fldnm.
+          add_keys( iv_tabname = 'TBZ1C' it_keys = lt_tbz1c ).
+
+        WHEN `TBZ0Q`.
+          SELECT client, objap, setid FROM tbz0q INTO TABLE @DATA(lt_tbz0q)
+            WHERE objap = @is_filter-objap
+              AND setid IN @is_filter-setid.
+          add_keys( iv_tabname = 'TBZ0Q' it_keys = lt_tbz0q ).
+
+        WHEN `TBZ0R`.
+          SELECT client, spras, objap, setid FROM tbz0r INTO TABLE @DATA(lt_tbz0r)
+            WHERE objap = @is_filter-objap
+              AND setid IN @is_filter-setid.
+          add_keys( iv_tabname = 'TBZ0R' it_keys = lt_tbz0r ).
+
+        WHEN `TBZ0O`.
+          SELECT client, objap, action FROM tbz0o INTO TABLE @DATA(lt_tbz0o)
+            WHERE objap = @is_filter-objap
+              AND action IN @is_filter-action.
+          add_keys( iv_tabname = 'TBZ0O' it_keys = lt_tbz0o ).
+
+        WHEN `TBZ3`.
+          SELECT client, objap, varnr FROM tbz3 INTO TABLE @DATA(lt_tbz3)
+            WHERE objap = @is_filter-objap
+              AND varnr IN @is_filter-varnr.
+          add_keys( iv_tabname = 'TBZ3' it_keys = lt_tbz3 ).
+
+        WHEN `TBZ3T`.
+          SELECT client, spras, objap, varnr FROM tbz3t INTO TABLE @DATA(lt_tbz3t)
+            WHERE objap = @is_filter-objap
+              AND varnr IN @is_filter-varnr.
+          add_keys( iv_tabname = 'TBZ3T' it_keys = lt_tbz3t ).
+
+        WHEN `TBZ3K`.
+          SELECT client, objap, varnr, posnr, dynid FROM tbz3k INTO TABLE @DATA(lt_tbz3k)
+            WHERE objap = @is_filter-objap
+              AND varnr IN @is_filter-varnr
+              AND dynid IN @is_filter-dynid.
+          add_keys( iv_tabname = 'TBZ3K' it_keys = lt_tbz3k ).
+
+        WHEN `TBZ3A`.
+          SELECT client, objap, dynid FROM tbz3a INTO TABLE @DATA(lt_tbz3a)
+            WHERE objap = @is_filter-objap
+              AND dynid IN @is_filter-dynid.
+          add_keys( iv_tabname = 'TBZ3A' it_keys = lt_tbz3a ).
+
+        WHEN `TBZ3B`.
+          SELECT client, spras, objap, dynid FROM tbz3b INTO TABLE @DATA(lt_tbz3b)
+            WHERE objap = @is_filter-objap
+              AND dynid IN @is_filter-dynid.
+          add_keys( iv_tabname = 'TBZ3B' it_keys = lt_tbz3b ).
+
+        WHEN `TBZ3I`.
+          SELECT client, objap, dynid, posnr, absnr FROM tbz3i INTO TABLE @DATA(lt_tbz3i)
+            WHERE objap = @is_filter-objap
+              AND dynid IN @is_filter-dynid
+              AND absnr IN @is_filter-absnr.
+          add_keys( iv_tabname = 'TBZ3I' it_keys = lt_tbz3i ).
+
+        WHEN `TBZ3C`.
+          SELECT client, objap, absnr FROM tbz3c INTO TABLE @DATA(lt_tbz3c)
+            WHERE objap = @is_filter-objap
+              AND absnr IN @is_filter-absnr.
+          add_keys( iv_tabname = 'TBZ3C' it_keys = lt_tbz3c ).
+
+        WHEN `TBZ3D`.
+          SELECT client, spras, objap, absnr FROM tbz3d INTO TABLE @DATA(lt_tbz3d)
+            WHERE objap = @is_filter-objap
+              AND absnr IN @is_filter-absnr.
+          add_keys( iv_tabname = 'TBZ3D' it_keys = lt_tbz3d ).
+
+        WHEN `TBZ3H`.
+          SELECT client, objap, absnr, posnr, sicht FROM tbz3h INTO TABLE @DATA(lt_tbz3h)
+            WHERE objap = @is_filter-objap
+              AND absnr IN @is_filter-absnr
+              AND sicht IN @is_filter-sicht.
+          add_keys( iv_tabname = 'TBZ3H' it_keys = lt_tbz3h ).
+
+        WHEN `TBZ3E`.
+          SELECT client, objap, sicht FROM tbz3e INTO TABLE @DATA(lt_tbz3e)
+            WHERE objap = @is_filter-objap
+              AND sicht IN @is_filter-sicht.
+          add_keys( iv_tabname = 'TBZ3E' it_keys = lt_tbz3e ).
+
+        WHEN `TBZ3F`.
+          SELECT client, spras, objap, sicht FROM tbz3f INTO TABLE @DATA(lt_tbz3f)
+            WHERE objap = @is_filter-objap
+              AND sicht IN @is_filter-sicht.
+          add_keys( iv_tabname = 'TBZ3F' it_keys = lt_tbz3f ).
+
+        WHEN `TBZ3S`.
+          SELECT client, objap, sicht, fldgr FROM tbz3s INTO TABLE @DATA(lt_tbz3s)
+            WHERE objap = @is_filter-objap
+              AND sicht IN @is_filter-sicht
+              AND fldgr IN @is_filter-fldgr.
+          add_keys( iv_tabname = 'TBZ3S' it_keys = lt_tbz3s ).
+
+        WHEN `TBZ3W`.
+          SELECT client, objap, fldgr FROM tbz3w INTO TABLE @DATA(lt_tbz3w)
+            WHERE objap = @is_filter-objap
+              AND fldgr IN @is_filter-fldgr.
+          add_keys( iv_tabname = 'TBZ3W' it_keys = lt_tbz3w ).
+
+        WHEN `TBZ3X`.
+          SELECT client, spras, objap, fldgr FROM tbz3x INTO TABLE @DATA(lt_tbz3x)
+            WHERE objap = @is_filter-objap
+              AND fldgr IN @is_filter-fldgr.
+          add_keys( iv_tabname = 'TBZ3X' it_keys = lt_tbz3x ).
+
+        WHEN `TBZ3R`.
+          SELECT client, objap, tabnm, fldnm, fldgr FROM tbz3r INTO TABLE @DATA(lt_tbz3r)
+            WHERE objap = @is_filter-objap
+              AND tabnm IN @is_filter-tabnm
+              AND fldnm IN @is_filter-fldnm
+              AND fldgr IN @is_filter-fldgr.
+          add_keys( iv_tabname = 'TBZ3R' it_keys = lt_tbz3r ).
+
+        WHEN `TBZ4A`.
+          SELECT client, objap, fcode, sicht FROM tbz4a INTO TABLE @DATA(lt_tbz4a)
+            WHERE objap = @is_filter-objap
+              AND sicht IN @is_filter-sicht.
+          add_keys( iv_tabname = 'TBZ4A' it_keys = lt_tbz4a ).
+      ENDCASE.
+    ENDLOOP.
   ENDMETHOD.
 
 
-  METHOD get_conditions.
-    rt_cond = mt_cond.
+  METHOD add_keys.
+    DATA lv_tabkey TYPE trobj_name.
+
+    APPEND |{ iv_tabname }: { lines( it_keys ) } entries| TO mt_log.
+
+    " Key columns are leading and character-like: the selected row is the table key
+    LOOP AT it_keys ASSIGNING FIELD-SYMBOL(<ls_key>).
+      lv_tabkey = <ls_key>.
+      APPEND VALUE #( pgmid      = 'R3TR'
+                      object     = 'TABU'
+                      objname    = iv_tabname
+                      mastertype = 'TABU'
+                      mastername = iv_tabname
+                      tabkey     = lv_tabkey ) TO mt_e071k.
+    ENDLOOP.
   ENDMETHOD.
 
 
   METHOD get_keys.
-    build_keys( ).
+    SORT mt_e071k BY objname tabkey.
+    DELETE ADJACENT DUPLICATES FROM mt_e071k COMPARING objname tabkey.
     rt_e071k = mt_e071k.
   ENDMETHOD.
 
 
   METHOD get_log.
-    build_keys( ).
     rt_log = mt_log.
-  ENDMETHOD.
-
-
-  METHOD build_keys.
-    DATA lr_table TYPE REF TO data.
-    FIELD-SYMBOLS <lt_rows> TYPE STANDARD TABLE.
-
-    IF mv_keys_built = abap_true.
-      RETURN.
-    ENDIF.
-    CLEAR: mt_e071k, mt_log.
-
-    LOOP AT mt_cond INTO DATA(ls_cond).
-      CREATE DATA lr_table TYPE STANDARD TABLE OF (ls_cond-tabname).
-      ASSIGN lr_table->* TO <lt_rows>.
-
-      TRY.
-          SELECT * FROM (ls_cond-tabname)
-            INTO TABLE @<lt_rows>
-            WHERE (ls_cond-sql_where).
-        CATCH cx_sy_dynamic_osql_error INTO DATA(lx_sql).
-          APPEND |{ ls_cond-tabname }: { lx_sql->get_text( ) }| TO mt_log.
-          CONTINUE.
-      ENDTRY.
-
-      APPEND |{ ls_cond-tabname } { ls_cond-sql_where }: { lines( <lt_rows> ) } entries| TO mt_log.
-      DATA(lt_key_fields) = get_key_fields( ls_cond-tabname ).
-
-      LOOP AT <lt_rows> ASSIGNING FIELD-SYMBOL(<ls_row>).
-        APPEND VALUE #( pgmid      = 'R3TR'
-                        object     = 'TABU'
-                        objname    = ls_cond-tabname
-                        mastertype = 'TABU'
-                        mastername = ls_cond-tabname
-                        tabkey     = build_tabkey( is_row = <ls_row> it_key_fields = lt_key_fields ) )
-          TO mt_e071k.
-      ENDLOOP.
-    ENDLOOP.
-
-    SORT mt_e071k BY objname tabkey.
-    DELETE ADJACENT DUPLICATES FROM mt_e071k COMPARING objname tabkey.
-    mv_keys_built = abap_true.
-  ENDMETHOD.
-
-
-  METHOD get_key_fields.
-    DATA lt_fields TYPE STANDARD TABLE OF fieldname WITH EMPTY KEY.
-
-    SELECT fieldname FROM dd03l
-      INTO TABLE @lt_fields
-      WHERE tabname  = @iv_tabname
-        AND as4local = 'A'
-        AND keyflag  = @abap_true
-        AND fieldname NOT LIKE '.%'
-      ORDER BY position.
-    rt_fields = VALUE #( FOR lv_field IN lt_fields ( CONV #( lv_field ) ) ).
-  ENDMETHOD.
-
-
-  METHOD build_tabkey.
-    DATA lv_length TYPE i.
-    DATA lv_offset TYPE i.
-
-    LOOP AT it_key_fields INTO DATA(lv_field).
-      ASSIGN COMPONENT lv_field OF STRUCTURE is_row TO FIELD-SYMBOL(<lv_value>).
-      IF sy-subrc <> 0.
-        RETURN.
-      ENDIF.
-      DESCRIBE FIELD <lv_value> LENGTH lv_length IN CHARACTER MODE.
-      IF lv_offset + lv_length > 120.
-        " Key longer than E071K-TABKEY: transport generically from here on
-        rv_tabkey+lv_offset = '*'.
-        RETURN.
-      ENDIF.
-      rv_tabkey+lv_offset(lv_length) = <lv_value>.
-      lv_offset = lv_offset + lv_length.
-    ENDLOOP.
   ENDMETHOD.
 
 
@@ -397,7 +495,9 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
 
 
   METHOD eq.
-    rv_cond = |{ iv_field } = { cl_abap_dyn_prg=>quote( condense( iv_value ) ) }|.
+    IF iv_value IS NOT INITIAL.
+      rt_range = VALUE #( ( sign = 'I' option = 'EQ' low = iv_value ) ).
+    ENDIF.
   ENDMETHOD.
 
 ENDCLASS.
