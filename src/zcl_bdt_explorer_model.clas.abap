@@ -89,14 +89,17 @@ CLASS zcl_bdt_explorer_model DEFINITION
     DATA mv_langu TYPE sy-langu.
     DATA mt_appli TYPE zif_bdt_explorer_types=>ty_appli_range.
 
-    " With an application filter only these sequences, screens, sections and data sets
-    " lead to a view of the selected applications
+    " With an application filter only these sequences, screens and data sets lead to a
+    " view of the selected applications. Below a relevant screen everything is shown.
     DATA mt_rel_varnr TYPE HASHED TABLE OF bu_varnr WITH UNIQUE KEY table_line.
     DATA mt_rel_dynid TYPE HASHED TABLE OF bu_dynid WITH UNIQUE KEY table_line.
-    DATA mt_rel_absnr TYPE HASHED TABLE OF bu_absnr WITH UNIQUE KEY table_line.
     DATA mt_rel_setid TYPE HASHED TABLE OF bu_setid WITH UNIQUE KEY table_line.
 
     METHODS determine_relevance.
+
+    "! Expander only for nodes that really have children (one select per node type)
+    METHODS mark_expandable
+      CHANGING ct_nodes TYPE tt_node.
 
     METHODS derive
       IMPORTING
@@ -189,13 +192,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
 
   METHOD determine_relevance.
-    SELECT DISTINCT h~absnr
-      FROM tbz3h AS h
-      INNER JOIN tbz3e AS e ON e~objap = h~objap AND e~sicht = h~sicht
-      INTO TABLE @mt_rel_absnr
-      WHERE h~objap = @mv_objap
-        AND e~appli IN @mt_appli.
-
     SELECT DISTINCT i~dynid
       FROM tbz3i AS i
       INNER JOIN tbz3h AS h ON h~objap = i~objap AND h~absnr = i~absnr
@@ -287,6 +283,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-event.
         rt_nodes = event_function_modules( is_node ).
     ENDCASE.
+    mark_expandable( CHANGING ct_nodes = rt_nodes ).
   ENDMETHOD.
 
 
@@ -356,6 +353,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
           APPEND ls_node TO rt_nodes.
         ENDLOOP.
     ENDCASE.
+    mark_expandable( CHANGING ct_nodes = rt_nodes ).
   ENDMETHOD.
 
 
@@ -482,6 +480,7 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         ORDER BY e~sicht.
       APPEND LINES OF views_to_nodes( is_from = ls_from it_views = lt_views iv_up = abap_true ) TO rt_nodes.
     ENDIF.
+    mark_expandable( CHANGING ct_nodes = rt_nodes ).
   ENDMETHOD.
 
 
@@ -558,7 +557,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
 
   METHOD application_content.
     DATA lt_views TYPE tt_view_row.
-    DATA lt_fms TYPE tt_efm_row.
 
     SELECT e~sicht, e~prgnm, e~dynnr, e~appli, t~bez50
       FROM tbz3e AS e
@@ -568,13 +566,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
         AND e~appli = @is_node-appli
       ORDER BY e~sicht.
     rt_nodes = views_to_nodes( is_from = is_node it_views = lt_views iv_up = abap_false ).
-
-    SELECT ztpkt, posnr, fname, appli, xaktv FROM tbz1f
-      INTO CORRESPONDING FIELDS OF TABLE @lt_fms
-      WHERE objap = @mv_objap
-        AND appli = @is_node-appli
-      ORDER BY ztpkt, posnr.
-    APPEND LINES OF fms_to_nodes( is_from = is_node it_fms = lt_fms ) TO rt_nodes.
   ENDMETHOD.
 
 
@@ -633,9 +624,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ORDER BY i~posnr.
 
     LOOP AT lt_sec INTO DATA(ls_sec).
-      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_absnr[ table_line = ls_sec-absnr ] ).
-        CONTINUE.
-      ENDIF.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-section ).
       ls_node-absnr    = ls_sec-absnr.
       ls_node-key_text = ls_sec-absnr.
@@ -656,7 +644,6 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       INTO CORRESPONDING FIELDS OF TABLE @lt_views
       WHERE h~objap = @mv_objap
         AND h~absnr = @is_node-absnr
-        AND e~appli IN @mt_appli
       ORDER BY h~posnr.
 
     rt_nodes = views_to_nodes( is_from = is_node it_views = lt_views iv_up = abap_false ).
@@ -798,6 +785,129 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ls_node-key_text = lv_action.
       ls_node-info     = `Field status of all field groups`.
       APPEND ls_node TO rt_nodes.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD mark_expandable.
+    DATA lt_appli TYPE STANDARD TABLE OF bu_appli WITH EMPTY KEY.
+    DATA lt_varnr TYPE STANDARD TABLE OF bu_varnr WITH EMPTY KEY.
+    DATA lt_dynid TYPE STANDARD TABLE OF bu_dynid WITH EMPTY KEY.
+    DATA lt_dynid_up TYPE STANDARD TABLE OF bu_dynid WITH EMPTY KEY.
+    DATA lt_absnr TYPE STANDARD TABLE OF bu_absnr WITH EMPTY KEY.
+    DATA lt_absnr_up TYPE STANDARD TABLE OF bu_absnr WITH EMPTY KEY.
+    DATA lt_sicht TYPE STANDARD TABLE OF bu_sicht WITH EMPTY KEY.
+    DATA lt_sicht_up TYPE STANDARD TABLE OF bu_sicht WITH EMPTY KEY.
+    DATA lt_fldgr TYPE STANDARD TABLE OF bu_fldgr WITH EMPTY KEY.
+    DATA lt_fldgr_up TYPE STANDARD TABLE OF bu_fldgr WITH EMPTY KEY.
+    DATA lv_has_status TYPE abap_bool.
+
+    DATA(lt_app) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-application ) ( n ) ).
+    IF lt_app IS NOT INITIAL.
+      " views of the application (TBZ3E)
+      SELECT appli FROM tbz3e INTO TABLE @lt_appli
+        FOR ALL ENTRIES IN @lt_app
+        WHERE objap = @mv_objap
+          AND appli = @lt_app-appli.
+    ENDIF.
+
+    DATA(lt_seq) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-sequence ) ( n ) ).
+    IF lt_seq IS NOT INITIAL.
+      " screens of the sequence (TBZ3K)
+      SELECT varnr FROM tbz3k INTO TABLE @lt_varnr
+        FOR ALL ENTRIES IN @lt_seq
+        WHERE objap = @mv_objap
+          AND varnr = @lt_seq-varnr.
+    ENDIF.
+
+    DATA(lt_scr) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-screen ) ( n ) ).
+    IF lt_scr IS NOT INITIAL.
+      " down: sections of the screen (TBZ3I), up: sequences using the screen (TBZ3K)
+      SELECT dynid FROM tbz3i INTO TABLE @lt_dynid
+        FOR ALL ENTRIES IN @lt_scr
+        WHERE objap = @mv_objap
+          AND dynid = @lt_scr-dynid.
+      SELECT dynid FROM tbz3k INTO TABLE @lt_dynid_up
+        FOR ALL ENTRIES IN @lt_scr
+        WHERE objap = @mv_objap
+          AND dynid = @lt_scr-dynid.
+    ENDIF.
+
+    DATA(lt_sec) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-section ) ( n ) ).
+    IF lt_sec IS NOT INITIAL.
+      " down: views of the section (TBZ3H), up: screens using the section (TBZ3I)
+      SELECT absnr FROM tbz3h INTO TABLE @lt_absnr
+        FOR ALL ENTRIES IN @lt_sec
+        WHERE objap = @mv_objap
+          AND absnr = @lt_sec-absnr.
+      SELECT absnr FROM tbz3i INTO TABLE @lt_absnr_up
+        FOR ALL ENTRIES IN @lt_sec
+        WHERE objap = @mv_objap
+          AND absnr = @lt_sec-absnr.
+    ENDIF.
+
+    DATA(lt_view) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-view ) ( n ) ).
+    IF lt_view IS NOT INITIAL.
+      " down: field groups of the view (TBZ3S), up: sections using the view (TBZ3H)
+      SELECT sicht FROM tbz3s INTO TABLE @lt_sicht
+        FOR ALL ENTRIES IN @lt_view
+        WHERE objap = @mv_objap
+          AND sicht = @lt_view-sicht.
+      SELECT sicht FROM tbz3h INTO TABLE @lt_sicht_up
+        FOR ALL ENTRIES IN @lt_view
+        WHERE objap = @mv_objap
+          AND sicht = @lt_view-sicht.
+    ENDIF.
+
+    DATA(lt_fg) = VALUE tt_node( FOR n IN ct_nodes WHERE ( type = zif_bdt_explorer_types=>c_type-field_group ) ( n ) ).
+    IF lt_fg IS NOT INITIAL.
+      " down: fields (TBZ3R) or field status per activity (TBZ0O), up: views using the field group (TBZ3S)
+      SELECT fldgr FROM tbz3r INTO TABLE @lt_fldgr
+        FOR ALL ENTRIES IN @lt_fg
+        WHERE objap = @mv_objap
+          AND fldgr = @lt_fg-fldgr.
+      SELECT fldgr FROM tbz3s INTO TABLE @lt_fldgr_up
+        FOR ALL ENTRIES IN @lt_fg
+        WHERE objap = @mv_objap
+          AND fldgr = @lt_fg-fldgr.
+      SELECT SINGLE action FROM tbz0o INTO @DATA(lv_action)
+        WHERE objap = @mv_objap.
+      lv_has_status = xsdbool( sy-subrc = 0 ).
+    ENDIF.
+
+    LOOP AT ct_nodes ASSIGNING FIELD-SYMBOL(<ls_node>) WHERE expandable = abap_true.
+      CASE <ls_node>-type.
+        WHEN zif_bdt_explorer_types=>c_type-application.
+          <ls_node>-expandable = xsdbool( line_exists( lt_appli[ table_line = <ls_node>-appli ] ) ).
+        WHEN zif_bdt_explorer_types=>c_type-sequence.
+          <ls_node>-expandable = xsdbool( <ls_node>-up = abap_false
+                                      AND line_exists( lt_varnr[ table_line = <ls_node>-varnr ] ) ).
+        WHEN zif_bdt_explorer_types=>c_type-screen.
+          IF <ls_node>-up = abap_true.
+            <ls_node>-expandable = xsdbool( line_exists( lt_dynid_up[ table_line = <ls_node>-dynid ] ) ).
+          ELSE.
+            <ls_node>-expandable = xsdbool( line_exists( lt_dynid[ table_line = <ls_node>-dynid ] ) ).
+          ENDIF.
+        WHEN zif_bdt_explorer_types=>c_type-section.
+          IF <ls_node>-up = abap_true.
+            <ls_node>-expandable = xsdbool( line_exists( lt_absnr_up[ table_line = <ls_node>-absnr ] ) ).
+          ELSE.
+            <ls_node>-expandable = xsdbool( line_exists( lt_absnr[ table_line = <ls_node>-absnr ] ) ).
+          ENDIF.
+        WHEN zif_bdt_explorer_types=>c_type-view.
+          IF <ls_node>-up = abap_true.
+            <ls_node>-expandable = xsdbool( line_exists( lt_sicht_up[ table_line = <ls_node>-sicht ] ) ).
+          ELSE.
+            <ls_node>-expandable = xsdbool( line_exists( lt_sicht[ table_line = <ls_node>-sicht ] ) ).
+          ENDIF.
+        WHEN zif_bdt_explorer_types=>c_type-field_group.
+          IF <ls_node>-up = abap_true.
+            <ls_node>-expandable = xsdbool( line_exists( lt_fldgr_up[ table_line = <ls_node>-fldgr ] ) ).
+          ELSE.
+            <ls_node>-expandable = xsdbool( lv_has_status = abap_true
+                                         OR line_exists( lt_fldgr[ table_line = <ls_node>-fldgr ] ) ).
+          ENDIF.
+      ENDCASE.
     ENDLOOP.
   ENDMETHOD.
 

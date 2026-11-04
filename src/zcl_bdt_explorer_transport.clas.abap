@@ -150,6 +150,11 @@ CLASS zcl_bdt_explorer_transport IMPLEMENTATION.
       WHEN zif_bdt_explorer_types=>c_type-application.
         read_keys( iv_tables = `TBZ0A TBZ0B`
                    is_filter = VALUE #( objap = lv_objap appli = eq( is_node-appli ) ) ).
+        " Event function modules of the application are not part of the tree below it
+        IF iv_cascade = abap_true.
+          read_keys( iv_tables = `TBZ1F`
+                     is_filter = VALUE #( objap = lv_objap appli = eq( is_node-appli ) ) ).
+        ENDIF.
 
       WHEN zif_bdt_explorer_types=>c_type-sequence.
         read_keys( iv_tables = `TBZ3 TBZ3T`
