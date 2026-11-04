@@ -89,6 +89,15 @@ CLASS zcl_bdt_explorer_model DEFINITION
     DATA mv_langu TYPE sy-langu.
     DATA mt_appli TYPE zif_bdt_explorer_types=>ty_appli_range.
 
+    " With an application filter only these sequences, screens, sections and data sets
+    " lead to a view of the selected applications
+    DATA mt_rel_varnr TYPE HASHED TABLE OF bu_varnr WITH UNIQUE KEY table_line.
+    DATA mt_rel_dynid TYPE HASHED TABLE OF bu_dynid WITH UNIQUE KEY table_line.
+    DATA mt_rel_absnr TYPE HASHED TABLE OF bu_absnr WITH UNIQUE KEY table_line.
+    DATA mt_rel_setid TYPE HASHED TABLE OF bu_setid WITH UNIQUE KEY table_line.
+
+    METHODS determine_relevance.
+
     METHODS derive
       IMPORTING
         is_from        TYPE ty_node
@@ -173,6 +182,42 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
     mv_objap = iv_objap.
     mv_langu = iv_langu.
     mt_appli = it_appli.
+    IF mt_appli IS NOT INITIAL.
+      determine_relevance( ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD determine_relevance.
+    SELECT DISTINCT h~absnr
+      FROM tbz3h AS h
+      INNER JOIN tbz3e AS e ON e~objap = h~objap AND e~sicht = h~sicht
+      INTO TABLE @mt_rel_absnr
+      WHERE h~objap = @mv_objap
+        AND e~appli IN @mt_appli.
+
+    SELECT DISTINCT i~dynid
+      FROM tbz3i AS i
+      INNER JOIN tbz3h AS h ON h~objap = i~objap AND h~absnr = i~absnr
+      INNER JOIN tbz3e AS e ON e~objap = h~objap AND e~sicht = h~sicht
+      INTO TABLE @mt_rel_dynid
+      WHERE i~objap = @mv_objap
+        AND e~appli IN @mt_appli.
+
+    SELECT DISTINCT k~varnr
+      FROM tbz3k AS k
+      INNER JOIN tbz3i AS i ON i~objap = k~objap AND i~dynid = k~dynid
+      INNER JOIN tbz3h AS h ON h~objap = i~objap AND h~absnr = i~absnr
+      INNER JOIN tbz3e AS e ON e~objap = h~objap AND e~sicht = h~sicht
+      INTO TABLE @mt_rel_varnr
+      WHERE k~objap = @mv_objap
+        AND e~appli IN @mt_appli.
+
+    SELECT DISTINCT setid FROM tbz3e
+      INTO TABLE @mt_rel_setid
+      WHERE objap = @mv_objap
+        AND appli IN @mt_appli
+        AND setid <> @space.
   ENDMETHOD.
 
 
@@ -475,6 +520,17 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-folder ).
       ls_node-folder   = lv_folder(4).
       ls_node-key_text = substring( val = lv_folder off = 4 ).
+
+      " Tables and activities have no application reference
+      IF mt_appli IS NOT INITIAL
+         AND ( ls_node-folder = zif_bdt_explorer_types=>c_folder-tables
+            OR ls_node-folder = zif_bdt_explorer_types=>c_folder-activities ).
+        CONTINUE.
+      ENDIF.
+      " No empty folders
+      IF get_children( ls_node ) IS INITIAL.
+        CONTINUE.
+      ENDIF.
       APPEND ls_node TO rt_nodes.
     ENDLOOP.
   ENDMETHOD.
@@ -531,6 +587,9 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ORDER BY s~varnr.
 
     LOOP AT lt_seq INTO DATA(ls_seq).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_varnr[ table_line = ls_seq-varnr ] ).
+        CONTINUE.
+      ENDIF.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-sequence ).
       ls_node-varnr    = ls_seq-varnr.
       ls_node-key_text = ls_seq-varnr.
@@ -551,6 +610,9 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ORDER BY k~posnr.
 
     LOOP AT lt_scr INTO DATA(ls_scr).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_dynid[ table_line = ls_scr-dynid ] ).
+        CONTINUE.
+      ENDIF.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-screen ).
       ls_node-dynid    = ls_scr-dynid.
       ls_node-key_text = ls_scr-dynid.
@@ -571,6 +633,9 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ORDER BY i~posnr.
 
     LOOP AT lt_sec INTO DATA(ls_sec).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_absnr[ table_line = ls_sec-absnr ] ).
+        CONTINUE.
+      ENDIF.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-section ).
       ls_node-absnr    = ls_sec-absnr.
       ls_node-key_text = ls_sec-absnr.
@@ -707,6 +772,9 @@ CLASS zcl_bdt_explorer_model IMPLEMENTATION.
       ORDER BY q~setid.
 
     LOOP AT lt_sets INTO DATA(ls_set).
+      IF mt_appli IS NOT INITIAL AND NOT line_exists( mt_rel_setid[ table_line = ls_set-setid ] ).
+        CONTINUE.
+      ENDIF.
       DATA(ls_node) = derive( is_from = is_node iv_type = zif_bdt_explorer_types=>c_type-data_set ).
       ls_node-setid    = ls_set-setid.
       ls_node-key_text = ls_set-setid.

@@ -97,8 +97,6 @@ CLASS zcl_bdt_explorer_tree IMPLEMENTATION.
     lo_settings->set_hierarchy_header( 'BDT customizing' ).
     lo_settings->set_hierarchy_size( 50 ).
 
-    mo_tree->get_selections( )->set_selection_mode( if_salv_c_selection_mode=>multiple ).
-
     setup_columns( ).
     setup_functions( ).
 

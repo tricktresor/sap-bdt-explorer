@@ -49,13 +49,9 @@ CLASS lcl_app IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD pai.
-    CASE iv_ucomm.
-      WHEN 'ONLI'.
-        load( abap_true ).
-      WHEN space.
-        " Enter: reload only when the selection changed, keep the expanded tree otherwise
-        load( abap_false ).
-    ENDCASE.
+    " F8 always reloads; Enter (and any other PAI) reloads when the selection changed,
+    " so control events of the tree do not reset it
+    load( xsdbool( iv_ucomm = 'ONLI' ) ).
   ENDMETHOD.
 
   METHOD load.
